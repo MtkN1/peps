@@ -1,5 +1,5 @@
 PEP: 735
-Title: Dependency Groups in pyproject.toml
+Title: pyproject.toml における依存関係グループ
 Author: Stephen Rosen <sirosen0@gmail.com>
 Sponsor: Brett Cannon <brett@python.org>
 PEP-Delegate: Paul Moore <p.f.moore@gmail.com>
@@ -15,264 +15,166 @@ Resolution: `10-Oct-2024 <https://discuss.python.org/t/39233/312>`__
 Abstract
 ========
 
-This PEP specifies a mechanism for storing package requirements in
-``pyproject.toml`` files such that they are not included in any built distribution of
-the project.
+この PEP は、プロジェクトのビルドされた配布物に含まれないように、パッケージの依存関係を ``pyproject.toml`` ファイルに保存するメカニズムを指定します。
 
-This is suitable for creating named groups of dependencies, similar to
-``requirements.txt`` files, which launchers, IDEs, and other tools can find and
-identify by name.
+これは、ランチャー、IDE、およびその他のツールが名前で見つけて識別できるように、``requirements.txt`` ファイルに似た名前付きの依存関係グループを作成するのに適しています。
 
-The feature defined here is referred to as "Dependency Groups".
+ここで定義される機能は「依存関係グループ」と呼ばれます。
 
 Motivation
 ==========
 
-There are two major use cases for which the Python community has no
-standardized answer:
+Python コミュニティには標準化された回答がない 2 つの主要なユースケースがあります。
 
-* How should development dependencies be defined for packages?
+* パッケージの開発依存関係はどのように定義すべきですか？
 
-* How should dependencies be defined for projects which do not build
-  distributions (non-package projects)?
+* 配布物をビルドしないプロジェクト (非パッケージ プロジェクト) の依存関係はどのように定義すべきですか？
 
-In support of these two needs, there are two common solutions which are similar
-to this proposal:
+これら 2 つのニーズをサポートするために、この提案に似た 2 つの一般的なソリューションがあります。
 
-* ``requirements.txt`` files
+* ``requirements.txt`` ファイル
 
-* package `extras <https://packaging.python.org/en/latest/specifications/dependency-specifiers/#extras>`__
+* パッケージ `extras <https://packaging.python.org/en/latest/specifications/dependency-specifiers/#extras>`__
 
-Both ``requirements.txt`` files and ``extras`` have limitations which this
-standard seeks to overcome.
+``requirements.txt`` ファイルと ``extras`` には、この標準が克服しようとする制限があります。
 
-Note that the two use cases above describe two different types of projects
-which this PEP seeks to support:
+上記の 2 つのユースケースは、この PEP がサポートしようとする 2 つの異なるタイプのプロジェクトを説明しています。
 
-* Python packages, such as libraries
+* ライブラリなどの Python パッケージ
 
-* non-package projects, such as data science projects
+* データ サイエンス プロジェクトなどの非パッケージ プロジェクト
 
-Several motivating use cases are defined in detail in the :ref:`Use Cases Appendix <use_cases>`.
+いくつかの動機付けとなるユースケースは、:ref:`Use Cases Appendix <use_cases>` で詳細に定義されています。
 
 Limitations of ``requirements.txt`` files
 -----------------------------------------
 
-Many projects may define one or more ``requirements.txt`` files,
-and may arrange them either at the project root (e.g. ``requirements.txt`` and
-``test-requirements.txt``) or else in a directory (e.g.
-``requirements/base.txt`` and ``requirements/test.txt``). However, there are
-major issues with the use of requirements files in this way:
+多くのプロジェクトは 1 つ以上の ``requirements.txt`` ファイルを定義し、プロジェクトのルート (例: ``requirements.txt`` および ``test-requirements.txt``) に配置するか、ディレクトリ (例: ``requirements/base.txt`` および ``requirements/test.txt``) に配置する場合があります。ただし、次のような ``requirements.txt`` ファイルの使用には大きな問題があります。
 
-* There is no standardized naming convention such that tools can discover or
-  use these files by name.
+* これらのファイルを名前で検出または使用できるようにする標準化された命名規則はありません。
 
-* ``requirements.txt`` files are *not standardized*, but instead provide
-  options to ``pip``.
+* ``requirements.txt`` ファイルは *標準化されていません* が、代わりに ``pip`` オプションを提供します。
 
-As a result, it is difficult to define tool behaviors based on
-``requirements.txt`` files. They are not trivial to discover or identify by
-name, and their contents may contain a mix of package specifiers and additional
-``pip`` options.
+その結果、``requirements.txt`` ファイルに基づいてツールの動作を定義することは困難です。これらを名前で検出または識別するのは簡単ではなく、その内容にはパッケージ指定子と追加の ``pip`` オプションが混在している場合があります。
 
-The lack of a standard for ``requirements.txt`` contents also means they are
-not portable to any alternative tools which wish to process them other than
-``pip``.
+``requirements.txt`` の内容に標準がないため、他のツールが処理するために ``pip`` 以外のツールに移植することはできません。
 
-Additionally, ``requirements.txt`` files require a file per dependency list.
-For some use-cases, this makes the marginal cost of dependency groupings high,
-relative to their benefit.
-A terser declaration is beneficial to projects with a number of small groups of
-dependencies.
+さらに、``requirements.txt`` ファイルには依存関係リストごとにファイルが必要です。いくつかのユースケースでは、これにより依存関係のグループ化の限界費用が高くなり、その利益に対して高くなります。より簡潔な宣言は、多くの小さな依存関係グループを持つプロジェクトにとって有益です。
 
-In contrast with this, Dependency Groups are defined at a well known location
-in ``pyproject.toml`` with fully standardized contents. Not only will they have
-immediate utility, but they will also serve as a starting point for future
-standards.
+これに対して、依存関係グループは、完全に標準化された内容で ``pyproject.toml`` の既知の場所に定義されます。これらは即時に有用であるだけでなく、将来の標準の出発点としても機能します。
 
 Limitations of ``extras``
 -------------------------
 
-``extras`` are additional package metadata declared in the
-``[project.optional-dependencies]`` table. They provide names for lists of
-package specifiers which are published as part of a package's metadata, and
-which a user can request under that name, as in ``pip install 'foo[bar]'`` to
-install ``foo`` with the ``bar`` extra.
+``extras`` は、``[project.optional-dependencies]`` テーブルに宣言された追加のパッケージ メタデータです。これにより、パッケージ指定子のリストに名前を付けて、パッケージのメタデータの一部として公開し、ユーザーがその名前で要求できるようにします。たとえば、``pip install 'foo[bar]'`` で ``foo`` を ``bar`` エクストラ付きでインストールします。
 
-Because ``extras`` are package metadata, they are not guaranteed to be
-statically defined and may require a build system to resolve.
-Furthermore, definition of a ``[project.optional-dependencies]`` indicates to
-many tools that a project is a package, and may drive tool behaviors such as
-validation of the ``[project]`` table.
+``extras`` はパッケージ メタデータであるため、静的に定義されていることが保証されておらず、解決にはビルド システムが必要な場合があります。さらに、``[project.optional-dependencies]`` の定義は、多くのツールにプロジェクトがパッケージであることを示し、``[project]`` テーブルの検証などのツールの動作を促進する場合があります。
 
-For projects which are packages, ``extras`` are a common solution for defining
-development dependencies, but even under these circumstances they have
-downsides:
+パッケージであるプロジェクトの場合、``extras`` は開発依存関係を定義するための一般的なソリューションですが、これらの状況下でも欠点があります。
 
-* Because an ``extra`` defines optional *additional* dependencies, it is not
-  possible to install an ``extra`` without installing the current package and
-  its dependencies.
+* ``extra`` はオプションの *追加* 依存関係を定義するため、現在のパッケージとその依存関係をインストールせずに ``extra`` をインストールすることはできません。
 
-* Because they are user-installable, ``extras`` are part of the public interface
-  for packages. Because ``extras`` are published, package developers often are
-  concerned about ensuring that their development extras are not confused with
-  user-facing extras.
+* ユーザーがインストール可能なため、``extras`` はパッケージの公開インターフェイスの一部です。``extras`` が公開されるため、パッケージ開発者は開発用のエクストラがユーザー向けのエクストラと混同されないようにすることを心配することがよくあります。
 
 Rationale
 =========
 
-This PEP defines the storage of requirements data in lists within a
-``[dependency-groups]`` table.
-This name was chosen to match the canonical name of the feature
-("Dependency Groups").
+この PEP は、依存関係データを ``[dependency-groups]`` テーブル内のリストに保存する方法を定義します。この名前は、機能の標準名 (「依存関係グループ」) に一致するように選択されました。
 
-This format should be as simple and learnable as possible, having a format
-very similar to existing ``requirements.txt`` files for many cases. Each list
-in ``[dependency-groups]`` is defined as a list of package specifiers. For
-example:
+この形式は、既存の ``requirements.txt`` ファイルと非常に似た形式を持ち、できるだけシンプルで学びやすいものである必要があります。``[dependency-groups]`` の各リストは、パッケージ指定子のリストとして定義されます。たとえば：
 
 .. code-block:: toml
 
     [dependency-groups]
     test = ["pytest>7", "coverage"]
 
-There are a number of use cases for ``requirements.txt`` files which require
-data which cannot be expressed in :pep:`508` dependency specifiers. Such
-fields are not valid in Dependency Groups. Including many of the data and
-fields which ``pip`` supports, such as index servers, hashes, and path
-dependencies, requires new standards. This standard leaves room for new
-standards and developments, but does not attempt to support all valid
-``requirements.txt`` contents.
+``requirements.txt`` ファイルには、:pep:`508` 依存関係指定子では表現できないデータが必要なユースケースがいくつかあります。これらのフィールドは依存関係グループでは無効です。インデックス サーバー、ハッシュ、パス依存関係など、``pip`` がサポートする多くのデータやフィールドを含めるには、新しい標準が必要です。この標準は、新しい標準や開発の余地を残していますが、すべての有効な ``requirements.txt`` コンテンツをサポートしようとはしていません。
 
-The only exception to this is the ``-r`` flag which ``requirements.txt`` files
-use to include one file in another. Dependency Groups support an "include"
-mechanism which is similar in meaning, allowing one dependency group to extend
-another.
+これに対する唯一の例外は、``requirements.txt`` ファイルが 1 つのファイルを別のファイルに含めるために使用する ``-r`` フラグです。依存関係グループは、意味が似ている「include」メカニズムをサポートしており、1 つの依存関係グループが別の依存関係グループを拡張できるようにします。
 
-Dependency Groups have two additional features which are similar to
-``requirements.txt`` files:
+依存関係グループには、``requirements.txt`` ファイルと同様の 2 つの追加機能があります。
 
-* they are not published as distinct metadata in any built distribution
+* それらは、ビルドされた配布物の個別のメタデータとして公開されません
 
-* installation of a dependency group does not imply installation of a package's
-  dependencies or the package itself
+* 依存関係グループのインストールは、パッケージの依存関係やパッケージ自体のインストールを意味しません
 
 Use Cases
 ---------
 
-The following use cases are considered important targets for this PEP. They are
-defined in greater detail in the :ref:`Use Cases Appendix <use_cases>`.
+次のユースケースは、この PEP の重要なターゲットと見なされています。これらは、:ref:`Use Cases Appendix <use_cases>` で詳細に定義されています。
 
-* Web Applications deployed via a non-python-packaging build process
-* Libraries with unpublished dev dependency groups
-* Data science projects with groups of dependencies but no core package
-* *Input data* to lockfile generation (Dependency Groups should generally not
-  be used as a location for locked dependency data)
-* Input data to an environment manager, such as tox, Nox, or Hatch
-* Configurable IDE discovery of test and linter requirements
+* 非 Python パッケージング ビルド プロセスを介してデプロイされた Web アプリケーション
+* 未公開の開発依存関係グループを持つライブラリ
+* コア パッケージを持たない依存関係グループを持つデータ サイエンス プロジェクト
+* ロックファイル生成の *入力データ* (依存関係グループは、ロックされた依存関係データの場所として一般的に使用されるべきではありません)
+* tox、Nox、Hatch などの環境マネージャーへの入力データ
+* テストおよびリンターの要件の構成可能な IDE 検出
 
 Regarding Poetry and PDM Dependency Groups
 ------------------------------------------
 
-The existing Poetry and PDM tools already offer a feature which each calls
-"Dependency Groups". However, absent any standard for specifying collections
-of dependencies, each tool defines these in a tool-specific way, in the
-relevant sections of the ``[tool]`` table.
+既存の Poetry および PDM ツールは、すでにそれぞれ「依存関係グループ」と呼ばれる機能を提供しています。ただし、依存関係のコレクションを指定するための標準がない場合、各ツールは関連する ``[tool]`` テーブルのセクションでこれらをツール固有の方法で定義します。
 
-(PDM also uses extras for some Dependency Groups, and overlaps the notion
-heavily with extras.)
+(PDM は一部の依存関係グループにエクストラも使用しており、概念をエクストラと大きく重複させています。)
 
-This PEP does not support all of the features of Poetry and PDM, which, like
-``requirements.txt`` files for ``pip``, support several non-standard extensions
-to common dependency specifiers.
+この PEP は、Poetry および PDM のすべての機能をサポートしているわけではありません。これらのツールは、``pip`` の ``requirements.txt`` ファイルと同様に、一般的な依存関係指定子に対するいくつかの非標準拡張をサポートしています。
 
-It should be possible for such tools to use standardized Dependency Groups as
-extensions of their own Dependency Group mechanisms.
-However, defining a new data format which replaces the existing Poetry and PDM
-solutions is a non-goal. Doing so would require standardizing several
-additional features, such as path dependencies, which are supported by these
-tools.
+これらのツールが独自の依存関係グループ メカニズムの拡張として標準化された依存関係グループを使用できるようにする必要があります。ただし、既存の Poetry および PDM ソリューションを置き換える新しいデータ形式を定義することは目標ではありません。これを行うには、これらのツールでサポートされているパス依存関係などのいくつかの追加機能を標準化する必要があります。
 
 Dependency Groups are not Hidden Extras
 ---------------------------------------
 
-Dependency Groups are very similar to extras which go unpublished.
-However, there are two major features which distinguish them from extras
-further:
+依存関係グループは、公開されないエクストラと非常に似ています。ただし、次の 2 つの主要な機能により、エクストラとはさらに区別されます。
 
-* they support non-package projects
+* 非パッケージ プロジェクトをサポートします
 
-* installation of a Dependency Group does not imply installation of a package's
-  dependencies (or the package itself)
+* 依存関係グループのインストールは、パッケージの依存関係 (またはパッケージ自体) のインストールを意味しません
 
 Future Compatibility & Invalid Data
 -----------------------------------
 
-Dependency Groups are intended to be extensible in future PEPs.
-However, Dependency Groups should also be usable by multiple tools in a
-single Python project.
-With multiple tools using the same data, it is possible that one implements
-a future PEP which extends Dependency Groups, while another does not.
+依存関係グループは、将来の PEP で拡張可能であることを意図しています。ただし、依存関係グループは、単一の Python プロジェクトで複数のツールが使用できる必要があります。複数のツールが同じデータを使用する場合、1 つのツールが依存関係グループ データの将来の PEP を実装し、もう 1 つのツールが実装しない可能性があります。
 
-To support users in this case, this PEP defines and recommends validation
-behaviors in which tools only examine Dependency Groups which they are using.
-This allows multiple tools, using different versions of Dependency Groups data,
-to share a single table in ``pyproject.toml``.
+この場合のユーザーをサポートするために、この PEP は、ツールが使用している依存関係グループのみを調べる検証動作を定義および推奨します。これにより、複数のツールが異なるバージョンの依存関係グループ データを使用して、``pyproject.toml`` の単一テーブルを共有できるようになります。
 
 Specification
 =============
 
-This PEP defines a new section (table) in ``pyproject.toml`` files named
-``dependency-groups``. The ``dependency-groups`` table contains an arbitrary
-number of user-defined keys, each of which has, as its value, a list of
-requirements (defined below). These keys must be
-`valid non-normalized names <https://packaging.python.org/en/latest/specifications/name-normalization/#valid-non-normalized-names>`__,
-and must be
+この PEP は、``pyproject.toml`` ファイルに ``dependency-groups`` という名前の新しいセクション (テーブル) を定義します。``dependency-groups`` テーブルには、ユーザー定義のキーが任意の数含まれており、その値として依存関係のリスト (以下で定義) があります。これらのキーは
+`valid non-normalized names <https://packaging.python.org/en/latest/specifications/name-normalization/#valid-non-normalized-names>`__
+でなければならず、比較する前に
 `normalized <https://packaging.python.org/en/latest/specifications/name-normalization/#normalization>`__
-before comparisons.
+する必要があります。
 
-Tools SHOULD prefer to present the original, non-normalized name to users by
-default. If duplicate names, after normalization, are encountered, tools SHOULD
-emit an error.
+ツールは、デフォルトで元の非正規化名をユーザーに表示することを優先する必要があります (SHOULD)。正規化後に重複する名前が見つかった場合、ツールはエラーを出力する必要があります (SHOULD)。
 
-Requirement lists under ``dependency-groups`` may contain strings, tables
-("dicts" in Python), or a mix of strings and tables.
+``dependency-groups`` の下の要件リストには、文字列、テーブル (Python では「dict」)、または文字列とテーブルの混合を含めることができます。
 
-Strings in requirement lists must be valid
-`Dependency Specifiers <https://packaging.python.org/en/latest/specifications/dependency-specifiers/>`__,
-as defined in :pep:`508`.
+要件リストの文字列は、有効な
+`Dependency Specifiers <https://packaging.python.org/en/latest/specifications/dependency-specifiers/>`__
+である必要があります。:pep:`508` で定義されています。
 
-Tables in requirement lists must be valid Dependency Object Specifiers.
+要件リストのテーブルは、有効な依存関係オブジェクト指定子である必要があります。
 
 Dependency Object Specifiers
 ----------------------------
 
-Dependency Object Specifiers are tables which define zero or more dependencies.
+依存関係オブジェクト指定子は、0 個以上の依存関係を定義するテーブルです。
 
-This PEP standardizes only one type of Dependency Object Specifier, a
-"Dependency Group Include". Other types may be added in future standards.
+この PEP は、1 種類の依存関係オブジェクト指定子、つまり「依存関係グループのインクルード」のみを標準化しています。他のタイプは将来の標準で追加される可能性があります。
 
 Dependency Group Include
 ''''''''''''''''''''''''
 
-A Dependency Group Include includes the dependencies of another Dependency
-Group in the current Dependency Group.
+依存関係グループのインクルードは、現在の依存関係グループに別の依存関係グループの依存関係を含めます。
 
-An include is defined as a table with exactly one key, ``"include-group"``,
-whose value is a string, the name of another Dependency Group.
+インクルードは、キーが ``"include-group"`` であり、その値が別の依存関係グループの名前である文字列であるテーブルとして定義されます。
 
-For example, ``{include-group = "test"}`` is an include which expands to the
-contents of the ``test`` Dependency Group.
+たとえば、``{include-group = "test"}`` は、``test`` 依存関係グループの内容に展開されるインクルードです。
 
-Includes are defined to be exactly equivalent to the contents of the named
-Dependency Group, inserted into the current group at the location of the include.
-For example, if ``foo = ["a", "b"]`` is one group, and
-``bar = ["c", {include-group = "foo"}, "d"]`` is another, then ``bar`` should
-evaluate to ``["c", "a", "b", "d"]`` when Dependency Group Includes are expanded.
+インクルードは、現在のグループのインクルードの場所に挿入された、名前付き依存関係グループの内容とまったく同じであると定義されています。たとえば、``foo = ["a", "b"]`` が 1 つのグループであり、``bar = ["c", {include-group = "foo"}, "d"]`` が別のグループである場合、依存関係グループのインクルードが展開されると ``bar`` は ``["c", "a", "b", "d"]`` になるはずです。
 
-Dependency Group Includes may specify the same package multiple times. Tools
-SHOULD NOT deduplicate or otherwise alter the list contents produced by the
-include. For example, given the following table:
+依存関係グループのインクルードは、同じパッケージを複数回指定する場合があります。ツールは、インクルードによって生成されたリストの内容を重複排除したり、変更したりしない必要があります (SHOULD NOT)。たとえば、次のテーブルがあるとします。
 
 .. code:: toml
 
@@ -282,22 +184,14 @@ include. For example, given the following table:
     group-c = ["foo<1.0"]
     all = ["foo", {include-group = "group-a"}, {include-group = "group-b"}, {include-group = "group-c"}]
 
-The resolved value of ``all`` SHOULD be ``["foo", "foo", "foo>1.0", "foo<1.0"]``.
-Tools should handle such a list exactly as they would handle any other case in
-which they are asked to process the same requirement multiple times with
-different version constraints.
+``all`` の解決された値は ``["foo", "foo", "foo>1.0", "foo<1.0"]`` である必要があります。ツールは、そのようなリストを、異なるバージョン制約で同じ要件を複数回処理するように求められる場合とまったく同じように処理する必要があります。
 
-Dependency Group Includes may include lists containing Dependency Group
-Includes, in which case those includes should be expanded as well. Dependency
-Group Includes MUST NOT include cycles, and tools SHOULD report an error if
-they detect a cycle.
+依存関係グループのインクルードは、依存関係グループのインクルードを含むリストを含める場合があり、その場合、それらのインクルードも展開する必要があります。依存関係グループのインクルードはサイクルを含めることはできず、ツールはサイクルを検出した場合にエラーを報告する必要があります (SHOULD)。
 
 Example Dependency Groups Table
 -------------------------------
 
-The following is an example of a partial ``pyproject.toml`` which uses this to
-define four Dependency Groups: ``test``, ``docs``, ``typing``, and
-``typing-test``:
+次に、これを使用して 4 つの依存関係グループ ``test``、``docs``、``typing``、および ``typing-test`` を定義する部分的な ``pyproject.toml`` の例を示します。
 
 .. code:: toml
 
@@ -307,22 +201,16 @@ define four Dependency Groups: ``test``, ``docs``, ``typing``, and
     typing = ["mypy", "types-requests"]
     typing-test = [{include-group = "typing"}, {include-group = "test"}, "useful-types"]
 
-Note that none of these Dependency Group declarations implicitly install the
-current package, its dependencies, or any optional dependencies.
-Use of a Dependency Group like ``test`` to test a package requires that the
-user's configuration or toolchain also installs the current package (``.``).
-For example,
+これらの依存関係グループの宣言は、現在のパッケージ、その依存関係、またはオプションの依存関係を暗黙的にインストールしないことに注意してください。``test`` のような依存関係グループを使用してパッケージをテストするには、ユーザーの構成またはツールチェーンが現在のパッケージ (``.``) もインストールする必要があります。たとえば、
 
 .. code-block:: shell
 
     $TOOL install-dependency-group test
     pip install -e .
 
-could be used (supposing ``$TOOL`` is a tool which supports installing
-Dependency Groups) to build a testing environment.
+(依存関係グループをサポートするツールが ``$TOOL`` であると仮定して) テスト環境を構築するために使用できます。
 
-This also allows for the ``docs`` dependency group to be used without
-installing the project as a package:
+これにより、プロジェクトをパッケージとしてインストールせずに ``docs`` 依存関係グループを使用できるようになります。
 
 .. code-block:: shell
 
@@ -331,69 +219,48 @@ installing the project as a package:
 Package Building
 ----------------
 
-Build backends MUST NOT include Dependency Group data in built distributions as
-package metadata. This means that PKG-INFO in sdists and METADATA in wheels
-do not include any referencable fields containing Dependency Groups.
+ビルド バックエンドは、ビルドされた配布物に依存関係グループ データをパッケージ メタデータとして含めてはなりません (MUST NOT)。これは、sdist の PKG-INFO およびホイールの METADATA に依存関係グループを参照するフィールドが含まれないことを意味します。
 
-It is valid to use Dependency Groups in the evaluation of dynamic metadata, and
-``pyproject.toml`` files included in sdists will naturally still contain the
-``[dependency-groups]`` table. However, the table contents are not part of a
-published package's interfaces.
+依存関係グループを動的メタデータの評価に使用することは有効ですが、sdist に含まれる ``pyproject.toml`` ファイルには自然に ``[dependency-groups]`` テーブルが含まれます。ただし、テーブルの内容は公開されたパッケージのインターフェイスの一部ではありません。
 
 Installing Dependency Groups
 ----------------------------
 
-Tools which support Dependency Groups are expected to provide new options and
-interfaces to allow users to install from Dependency Groups.
+依存関係グループをサポートするツールは、ユーザーが依存関係グループからインストールできるようにする新しいオプションとインターフェイスを提供することが期待されます。
 
-No syntax is defined for expressing the Dependency Group of a package, for two
-reasons:
+この PEP では、パッケージの依存関係グループを表現する構文は定義されていません。その理由は 2 つあります。
 
-* it would not be valid to refer to the Dependency Groups of a third-party
-  package from PyPI (because the data is defined to be unpublished)
+* 依存関係グループのデータは公開されないと定義されているため、PyPI からのサードパーティ パッケージの依存関係グループを参照することは有効ではありません。
 
-* there is not guaranteed to be a current package for Dependency Groups -- part
-  of their purpose is to support non-package projects
+* 依存関係グループには、依存関係グループが存在することが保証されていません。依存関係グループの目的の一部は、非パッケージ プロジェクトをサポートすることです。
 
-For example, a possible pip interface for installing Dependency Groups
-would be:
+たとえば、依存関係グループをインストールするための pip インターフェイスは次のようになります。
 
 .. code:: shell
 
     pip install --dependency-groups=test,typing
 
-Note that this is only an example. This PEP does not declare any requirements
-for how tools support the installation of Dependency Groups.
+これはあくまで一例です。この PEP では、ツールが依存関係グループのインストールをサポートする方法についての要件は宣言されていません。
 
 Overlapping Install UX with Extras
 ''''''''''''''''''''''''''''''''''
 
-Tools MAY choose to provide the same interfaces for installing Dependency
-Groups as they do for installing extras.
+ツールは、依存関係グループのインストールにエクストラのインストールと同じインターフェイスを提供することを選択できます (MAY)。
 
-Note that this specification does not forbid having an extra whose name matches
-a Dependency Group.
+この仕様では、エクストラと名前が一致する依存関係グループを持つことを禁止していないことに注意してください。
 
-Users are advised to avoid creating Dependency Groups whose names match extras.
-Tools MAY treat such matching as an error.
+ユーザーは、エクストラと一致する名前の依存関係グループを作成しないようにアドバイスされます。ツールは、そのような一致をエラーとして扱うことができます (MAY)。
 
 Validation and Compatibility
 ----------------------------
 
-Tools supporting Dependency Groups may want to validate data before using it.
-However, tools implementing such validation behavior should be careful to allow
-for future expansions to this spec, so that they do not unnecessarily emit
-errors or warnings in the presence of new syntax.
+依存関係グループをサポートするツールは、使用する前にデータを検証したい場合があります。ただし、そのような検証動作を実装するツールは、新しい構文の存在下で不必要にエラーや警告を出さないように、この仕様の将来の拡張を許可するように注意する必要があります。
 
-Tools SHOULD error when evaluating or processing unrecognized data in
-Dependency Groups.
+ツールは、依存関係グループで認識されないデータを評価または処理する際にエラーを出す必要があります (SHOULD)。
 
-Tools SHOULD NOT eagerly validate the list contents of **all** Dependency
-Groups.
+ツールは、**すべての** 依存関係グループのリスト内容を積極的に検証してはなりません (SHOULD NOT)。
 
-This means that in the presence of the following data, most tools will allow
-the ``foo`` group to be used, and will only error when the ``bar`` group is
-used:
+これは、次のデータが存在する場合、ほとんどのツールが ``foo`` グループを使用できるようにし、``bar`` グループが使用されるときにのみエラーを出すことを意味します。
 
 .. code-block:: toml
 
@@ -404,16 +271,12 @@ used:
 Linters and Validators may be stricter
 ''''''''''''''''''''''''''''''''''''''
 
-Eager validation is discouraged for tools which primarily install or resolve
-Dependency Groups.
-Linters and validation tools may have good cause to ignore this recommendation.
+積極的な検証は、主に依存関係グループをインストールまたは解決するツールには推奨されません。リンターおよび検証ツールには、この推奨事項を無視する正当な理由がある場合があります。
 
 Reference Implementation
 ========================
 
-The following Reference Implementation prints the contents of a Dependency
-Group to stdout, newline delimited.
-The output is therefore valid ``requirements.txt`` data.
+次のリファレンス実装は、依存関係グループの内容を標準出力に改行区切りで出力します。出力は有効な ``requirements.txt`` データです。
 
 .. code-block:: python
 
@@ -504,99 +367,47 @@ The output is therefore valid ``requirements.txt`` data.
 Backwards Compatibility
 =======================
 
-At time of writing, the ``dependency-groups`` namespace within a
-``pyproject.toml`` file is unused. Since the top-level namespace is
-reserved for use only by standards specified at packaging.python.org,
-there are no direct backwards compatibility concerns.
+執筆時点では、``pyproject.toml`` ファイル内の ``dependency-groups`` 名前空間は未使用です。トップレベルの名前空間は packaging.python.org で指定された標準でのみ使用するために予約されているため、直接的な下位互換性の問題はありません。
 
-However, the introduction of the feature has implications for a
-number of ecosystem tools, especially those which attempt to support
-examination of data in ``setup.py`` and ``requirements.txt``.
+ただし、この機能の導入には、特に ``setup.py`` および ``requirements.txt`` のデータの調査をサポートしようとする多くのエコシステム ツールに影響があります。
 
 Audit and Update Tools
 ----------------------
 
-A wide range of tools understand Python dependency data as expressed in
-``requirements.txt`` files. (e.g., Dependabot, Tidelift, etc)
+幅広いツールが ``requirements.txt`` ファイルに記述された Python 依存関係データを理解しています (例: Dependabot、Tidelift など)。
 
-Such tools inspect dependency data and, in some cases, offer tool-assisted or
-fully automated updates.
-It is our expectation that no such tools would support the new Dependency
-Groups at first, and broad ecosystem support could take many months or even some
-number of years to arrive.
+このようなツールは依存関係データを調査し、場合によってはツール支援または完全に自動化された更新を提供します。これらのツールが新しい依存関係グループを最初にサポートすることは期待しておらず、広範なエコシステムのサポートには数か月、さらには数年かかる場合があります。
 
-As a result, users of Dependency Groups would experience a degradation in their
-workflows and tool support at the time that they start using Dependency Groups.
-This is true of any new standard for where and how dependency data are encoded.
+その結果、依存関係グループを使用し始めたときに、依存関係グループのユーザーはワークフローとツールのサポートが低下することになります。これは、依存関係データの保存場所と方法に関する新しい標準に当てはまります。
 
 Security Implications
 =====================
 
-This PEP introduces new syntaxes and data formats for specifying dependency
-information in projects. However, it does not introduce newly specified
-mechanisms for handling or resolving dependencies.
+この PEP は、プロジェクトの依存関係情報を指定するための新しい構文とデータ形式を導入します。ただし、依存関係の処理または解決のための新しく指定されたメカニズムは導入されていません。
 
-It therefore does not carry security concerns other than those inherent in any
-tools which may already be used to install dependencies -- i.e. malicious
-dependencies may be specified here, just as they may be specified in
-``requirements.txt`` files.
+したがって、依存関係をインストールするために既に使用されているツールに固有のセキュリティ上の懸念以外のセキュリティ上の懸念はありません。つまり、悪意のある依存関係は、``requirements.txt`` ファイルに指定されるのと同様に、ここに指定される可能性があります。
 
 How to Teach This
 =================
 
-This feature should be referred to by its canonical name, "Dependency Groups".
+この機能は、その標準名である「依存関係グループ」と呼ばれるべきです。
 
-The basic form of usage should be taught as a variant on typical
-``requirements.txt`` data. Standard dependency specifiers (:pep:`508`) can be
-added to a named list. Rather than asking pip to install from a
-``requirements.txt`` file, either pip or a relevant workflow tool will install
-from a named Dependency Group.
+基本的な使用方法は、多くのユースケースで ``requirements.txt`` データのバリアントとして教えられるべきです。標準の依存関係指定子 (:pep:`508`) を名前付きリストに追加できます。pip に ``requirements.txt`` ファイルからインストールするように依頼する代わりに、pip または関連するワークフロー ツールが名前付き依存関係グループからインストールします。
 
-For new Python users, they may be taught directly to create a section in
-``pyproject.toml`` containing their Dependency Groups, similarly to how they
-are currently taught to use ``requirements.txt`` files.
-This also allows new Python users to learn about ``pyproject.toml`` files
-without needing to learn about package building.
-A ``pyproject.toml`` file with only ``[dependency-groups]`` and no other tables
-is valid.
+新しい Python ユーザーに対しては、``requirements.txt`` ファイルを使用する方法を教えるのと同様に、依存関係グループを含むセクションを ``pyproject.toml`` に作成するように直接教えることができます。これにより、新しい Python ユーザーはパッケージ ビルドについて学ぶ必要なく、``pyproject.toml`` ファイルについて学ぶことができます。``[dependency-groups]`` のみを含み、他のテーブルを含まない ``pyproject.toml`` ファイルは有効です。
 
-For both new and experienced users, the Dependency Group Includes will need to
-be explained. For users with experience using ``requirements.txt``, this can be
-described as an analogue for ``-r``. For new users, they should be taught that
-an include allows one Dependency Group to extend another. Similar configuration
-interfaces and the Python ``list.extend`` method may be used to explain the
-idea by analogy.
+新しいユーザーと経験豊富なユーザーの両方に対して、依存関係グループのインクルードを説明する必要があります。``requirements.txt`` を使用した経験があるユーザーには、これを ``-r`` の類似物として説明できます。新しいユーザーには、インクルードが 1 つの依存関係グループを別の依存関係グループに拡張できることを教える必要があります。類似の構成インターフェイスや Python の ``list.extend`` メソッドを使用して、このアイデアを類推して説明することができます。
 
-Python users who have used ``setup.py`` packaging may be familiar with common
-practices which predate ``pyproject.toml``, in which package metadata is
-defined dynamically. Requirements loaded from ``requirements.txt`` files and
-definitions of static lists prior to ``setup()`` invocation readily analogize
-with Dependency Groups.
+``setup.py`` パッケージングを使用した経験がある Python ユーザーは、``pyproject.toml`` の前に静的リストを定義するなど、一般的なプラクティスに精通しているかもしれません。``requirements.txt`` ファイルから読み込まれた要件と ``setup()`` 呼び出しの前の静的リストの定義は、依存関係グループと容易に類推できます。
 
 Interfaces for Use of Dependency Groups
 ---------------------------------------
 
-This specification provides no universal interface for interacting with
-Dependency Groups, other than inclusion in a built package via the ``project``
-table. This has implications both for tool authors and for users.
+この仕様は、パッケージ ビルドを介して ``project`` テーブルに含めること以外に、依存関係グループと対話するための普遍的なインターフェイスを提供しません。これは、ツールの作成者とユーザーの両方に影響を与えます。
 
-Tool authors should determine how or if Dependency Groups are relevant to their
-user stories, and build their own interfaces to fit.
-For environment managers, resolvers, installers, and related non-build tools,
-they will be able to document that they support "PEP 735 Dependency Groups",
-but they will be responsible for documenting their usage modes.
-For build backends, supporting Dependency Groups will require support for
-inclusion from the ``project`` table, but set no other strict requirements.
+ツールの作成者は、依存関係グループがユーザーストーリーにどのように関連するかを判断し、それに適した独自のインターフェイスを構築する必要があります。環境マネージャー、リゾルバー、インストーラー、および関連する非ビルド ツールの場合、依存関係グループの使用モードを文書化する責任があります。ビルド バックエンドの場合、依存関係グループをサポートするには ``project`` テーブルからのインクルードをサポートする必要がありますが、他の厳密な要件は設定されていません。
 
-For users, the primary consequence is that they must consult relevant tool
-documentation whenever they wish to use Dependency Groups outside of package
-builds.
-Users should be advised by tools, either through documentation or runtime
-warnings or errors, about usages which are disrecommended or not supported.
-For example, if a tool wishes to require that all Dependency Groups are
-mutually compatible, containing no contradictory package specifiers, it
-should document that restriction and advise users on how to appropriately
-leverage Dependency Groups for its purposes.
+ユーザーにとっての主な結果は、パッケージ ビルドの外部で依存関係グループを使用するたびに、関連するツールのドキュメントを参照する必要があることです。ツールは、推奨されない使用法やサポートされていない使用法について、ドキュメントや実行時の警告やエラーを通じてユーザーにアドバイスする必要があります。たとえば、ツールがすべての依存関係グループが互換性があり、矛盾するパッケージ指定子を含まないことを要求する場合、その制限を文書化し、その目的に適した依存関係グループを適切に活用する方法についてユーザーにアドバイスする必要があります。
 
 Rejected Ideas
 ==============
@@ -604,105 +415,62 @@ Rejected Ideas
 Why not define each Dependency Group as a table?
 ------------------------------------------------
 
-If our goal is to allow for future expansion, then defining each Dependency
-Group as a subtable, thus enabling us to attach future keys to each group,
-allows for the greatest future flexibility.
+将来の拡張を可能にすることが目標である場合、各依存関係グループをサブテーブルとして定義し、それによって将来のキーを各グループに添付できるようにすることで、将来の柔軟性が最大化されます。
 
-However, it also makes the structure nested more deeply, and therefore harder
-to teach and learn. One of the goals of this PEP is to be an easy replacement
-for many ``requirements.txt`` use-cases.
+ただし、これにより構造がより深くネストされ、教えたり学んだりするのが難しくなります。この PEP の目標の 1 つは、多くの ``requirements.txt`` ユースケースの簡単な代替手段であることです。
 
 Why not define a special string syntax to extend Dependency Specifiers?
 -----------------------------------------------------------------------
 
-Earlier drafts of this specification defined syntactic forms for Dependency
-Group Includes and Path Dependencies.
+この仕様の初期のドラフトでは、依存関係グループのインクルードとパス依存関係のための構文形式が定義されていました。
 
-However, there were three major issues with this approach:
+ただし、このアプローチには 3 つの主要な問題がありました。
 
-* it complicates the string syntax which must be taught, beyond PEP 508
+* これにより、:pep:`508` よりも教える必要がある文字列構文が複雑になります。
 
-* the resulting strings would always need to be disambiguated from PEP 508
-  specifiers, complicating implementations
+* 結果として得られる文字列は常に :pep:`508` 指定子と区別する必要があり、実装が複雑になります。
 
 Why not allow for more non-PEP 508 dependency specifiers?
 ---------------------------------------------------------
 
-Several use cases surfaced during discussion which need more expressive
-specifiers than are possible with :pep:`508`.
+議論中に、:pep:`508` では可能ではない、より表現力豊かな指定子が必要なユースケースがいくつか浮上しました。
 
-"Path Dependencies", referring to local paths, and references to
-``[project.dependencies]`` were of particular interest.
+「パス依存関係」はローカル パスを参照し、``[project.dependencies]`` への参照が特に関心を集めました。
 
-However, there are no existing standards for these features (excepting the
-de-facto standard of ``pip``'s implementation details).
+ただし、これらの機能の既存の標準はありません (事実上の標準である ``pip`` の実装の詳細を除く)。
 
-As a result, attempting to include these features in this PEP results in a
-significant growth in scope, to attempt to standardize these various features
-and ``pip`` behaviors.
+その結果、これらの機能をこの PEP に含めようとすると、これらのさまざまな機能や ``pip`` の動作を標準化しようとするため、範囲が大幅に拡大します。
 
-Special attention was devoted to attempting to standardize the expression of
-editable installations, as expressed by ``pip install -e`` and :pep:`660`.
-However, although the creation of editable installs is standardized for build
-backends, the behavior of editables is not standardized for installers.
-Inclusion of editables in this PEP requires that any supporting tool allows for
-the installation of editables.
+特に、``pip install -e`` および :pep:`660` で表現される編集可能なインストールの表現を標準化しようとすることに特別な注意が払われました。ただし、編集可能なインストールの作成はビルド バックエンドに対して標準化されていますが、編集可能なインストールの動作はインストーラーに対して標準化されていません。この PEP に編集可能なインストールを含めるには、サポートするツールが編集可能なインストールのインストールを許可する必要があります。
 
-Therefore, although Poetry and PDM provide syntaxes for some of these features,
-they are considered insufficiently standardized at present for inclusion in
-Dependency Groups.
+したがって、Poetry および PDM はこれらの機能の構文を提供していますが、依存関係グループに含めるには、現時点では十分に標準化されていないと見なされています。
 
 Why is the table not named ``[run]``, ``[project.dependency-groups]``, ...?
 ---------------------------------------------------------------------------
 
-There are many possible names for this concept.
-It will have to live alongside the already existing ``[project.dependencies]``
-and ``[project.optional-dependencies]`` tables, and possibly a new
-``[external]`` dependency table as well (at time of writing, :pep:`725`, which
-defines the ``[external]`` table, is in progress).
+この概念には多くの名前が考えられます。これは、既に存在する ``[project.dependencies]`` および ``[project.optional-dependencies]`` テーブルと並んで存在する必要があり、``[external]`` 依存関係テーブルも存在する可能性があります (執筆時点では、``[external]`` テーブルを定義する :pep:`725` が進行中です)。
 
-``[run]`` was a leading proposal in earlier discussions, but its proposed usage
-centered around a single set of runtime dependencies. This PEP explicitly
-outlines multiple groups of dependencies, which makes ``[run]`` a less
-appropriate fit -- this is not just dependency data for a specific runtime
-context, but for multiple contexts.
+``[run]`` は以前の議論で提案された主要な名前でしたが、その提案された使用法は単一の実行時依存関係セットを中心にしていました。この PEP は明示的に複数の依存関係グループを示しているため、``[run]`` は適切な名前ではありません。これは、特定の実行時コンテキストの依存関係データだけでなく、複数のコンテキストの依存関係データです。
 
-``[project.dependency-groups]`` would offer a nice parallel with
-``[project.dependencies]`` and ``[project.optional-dependencies]``, but has
-major downsides for non-package projects.
-``[project]`` requires several keys to be defined, such as ``name`` and
-``version``. Using this name would either require redefining the ``[project]``
-table to allow for these keys to be absent, or else would impose a requirement
-on non-package projects to define and use these keys. By extension, it would
-effectively require any non-package project allow itself to be treated as a
-package.
+``[project.dependency-groups]`` は ``[project.dependencies]`` および ``[project.optional-dependencies]`` と良い並行関係を提供しますが、非パッケージ プロジェクトには大きな欠点があります。``[project]`` には ``name`` や ``version`` などのキーを定義する必要があります。この名前を使用するには、``[project]`` テーブルをこれらのキーが存在しないことを許可するように再定義するか、非パッケージ プロジェクトにこれらのキーを定義して使用することを要求する必要があります。拡張すると、非パッケージ プロジェクトがパッケージとして扱われることを事実上要求することになります。
 
 Why is pip's planned implementation of ``--only-deps`` not sufficient?
 ----------------------------------------------------------------------
 
-pip currently has a feature on the roadmap to add an
-`--only-deps flag <https://github.com/pypa/pip/issues/11440>`_.
-This flag is intended to allow users to install package dependencies and extras
-without installing the current package.
+pip には現在、依存関係のみをインストールするための
+`--only-deps flag <https://github.com/pypa/pip/issues/11440>`_
+を追加する予定の機能があります。このフラグは、ユーザーが現在のパッケージをインストールせずにパッケージの依存関係とエクストラをインストールできるようにすることを目的としています。
 
-It does not address the needs of non-package projects, nor does it allow for
-the installation of an extra without the package dependencies.
+これは、非パッケージ プロジェクトのニーズには対応しておらず、エクストラをパッケージの依存関係なしでインストールすることもできません。
 
 Why isn't <environment manager> a solution?
 -------------------------------------------
 
-Existing environment managers like tox, Nox, and Hatch already have
-the ability to list inlined dependencies as part of their configuration data.
-This meets many development dependency needs, and clearly associates dependency
-groups with relevant tasks which can be run.
-These mechanisms are *good* but they are not *sufficient*.
+tox、Nox、Hatch などの既存の環境マネージャーはすでに、構成データの一部としてインライン依存関係をリストする機能を備えています。これにより、多くの開発依存関係のニーズが満たされ、関連するタスクと依存関係グループが明確に関連付けられます。これらのメカニズムは *優れています* が、*十分ではありません*。
 
-First, they do not address the needs of non-package projects.
+まず、これらは非パッケージ プロジェクトのニーズには対応していません。
 
-Second, there is no standard for other tools to use to access these data. This
-has impacts on high-level tools like IDEs and Dependabot, which cannot support
-deep integration with these Dependency Groups. (For example, at time of writing
-Dependabot will not flag dependencies which are pinned in ``tox.ini`` files.)
+第二に、他のツールがこれらのデータにアクセスするための標準はありません。これには、IDE や Dependabot などのハイレベル ツールに影響があります。これらのツールは、これらの依存関係グループと深く統合することをサポートできません (たとえば、執筆時点では Dependabot は ``tox.ini`` ファイルに固定された依存関係をフラグ付けしません)。
 
 Deferred Ideas
 ==============
@@ -710,52 +478,28 @@ Deferred Ideas
 Why not support Dependency Group Includes in ``[project.dependencies]`` or ``[project.optional-dependencies]``?
 ---------------------------------------------------------------------------------------------------------------
 
-Earlier drafts of this specification allowed Dependency Group Includes to be
-used in the ``[project]`` table.
-However, there were several issues raised during community feedback which led
-to its removal.
+この仕様の初期のドラフトでは、``[project]`` テーブルで依存関係グループのインクルードを使用できるようにしていました。ただし、コミュニティ フィードバック中に提起された問題がいくつかあり、その結果、削除されました。
 
-Only a small number of additional use cases would be addressed by the inclusion
-of Dependency Groups, and it increased the scope of the specification
-significantly. In particular, this inclusion would increase the number of parties
-impacted by the addition. Many readers of the ``[project]`` table, including build
-backends, SBOM generators, and dependency analyzers are implicated by a change to
-``[project]`` but may continue to operate as-is in the presence of a new (but
-unconnected) ``[dependency-groups]`` table.
+依存関係グループのインクルードを含めることで対応できるユースケースはごくわずかであり、仕様の範囲が大幅に拡大します。特に、依存関係メタデータを静的に定義することを複雑にし、依存関係メタデータを単一の場所に保存するという :pep:`621` の目標と矛盾します。
 
-Separately from the above concern, allowing inclusion of dependency groups from the
-``[project]`` table encourages package maintainers to move dependency metadata out
-of the current standard location.
-This complicates static ``pyproject.toml`` metadata and conflicts with the goal of
-:pep:`621` to store dependency metadata in a single location.
-
-Finally, exclusion of ``[project]`` support from this PEP is not final. The
-use of includes from that table, or an inclusion syntax from
-``[dependency-groups]`` into ``[project]``, could be introduced by a future
-PEP and considered on its own merits.
+最後に、この PEP から ``[project]`` サポートを除外することは最終的なものではありません。``[project]`` テーブルからのインクルードの使用、または ``[dependency-groups]`` から ``[project]`` へのインクルード構文は、将来の PEP によって導入され、その独自のメリットに基づいて検討される可能性があります。
 
 Use Cases for Dependency Group Includes From ``[project]``
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-Although deferred in this PEP, allowing includes from the ``[project]``
-table would address several use cases.
+この PEP では延期されていますが、``[project]`` テーブルからのインクルードを許可することで、いくつかのユースケースに対応できます。
 
-In particular, there are cases in which package developers would like to
-install only the dependencies of a package, without the package itself.
+特に、パッケージの依存関係のみをインストールし、パッケージ自体をインストールしない場合に便利なケースがあります。
 
-For example:
+たとえば：
 
-* Specify different environment variables or options when building dependencies
-  vs when building the package itself
+* 依存関係をビルドする際に、パッケージ自体をビルドする際とは異なる環境変数やオプションを指定する
 
-* Creating layered container images in which the dependencies are isolated from
-  the package being installed
+* 依存関係をパッケージから分離してレイヤード コンテナ イメージを作成する
 
-* Providing the dependencies to analysis environments (e.g., type checking)
-  without having to build and install the package itself
+* パッケージ自体をビルドしてインストールすることなく、依存関係を分析環境 (例: 型チェック) に提供する
 
-For an example of the last case, consider the following sample
-``pyproject.toml``:
+次のサンプル ``pyproject.toml`` を考えてみましょう。
 
 .. code-block:: toml
 
@@ -768,48 +512,25 @@ For an example of the last case, consider the following sample
     foo = ["c", "d"]
     typing = ["mypy", {include = "runtime"}, {include = "foo"}]
 
-In this case, a ``typing`` group can be defined, with all of the package's
-runtime dependencies, but without the package itself. This allows uses of the
-``typing`` Dependency Group to skip installation of the package -- not only is
-this more efficient, but it may reduce the requirements for testing systems.
+この場合、``typing`` グループは、パッケージ自体を含まずに、パッケージのすべてのランタイム依存関係を持つことができます。これにより、``typing`` 依存関係グループの使用は、パッケージのインストールをスキップできます。これはより効率的であるだけでなく、テスト システムの要件を減らすことができます。
 
 Why not support Dependency Group Includes in ``[build-system.requires]``?
 -------------------------------------------------------------------------
 
-Given that we will not allow for ``[project]`` usage of Dependency Groups,
-``[build-system.requires]`` can be considered in comparison with
-``[project.dependencies]``.
+``[project]`` テーブルへの依存関係グループのインクルードを許可しない場合、``[build-system.requires]`` を ``[project.dependencies]`` と比較して検討できます。
 
-There are fewer theoretical usages for build requirements specified in a group
-than package requirements. Additionally, the impact of such a change implicates
-:pep:`517` frontend, which would need to support Dependency Groups in order to
-prepare a build environment.
+ビルド要件をグループに指定するユースケースは、パッケージ要件よりも少ないです。さらに、この変更の影響は :pep:`517` フロントエンドに及び、依存関係グループをサポートしてビルド環境を準備する必要があります。
 
-Compared with changes to ``[project.dependencies]`` and
-``[project.optional-dependencies]``, changing the behaviors of
-``[build-system.requires]`` is higher impact and has fewer potential uses.
-Therefore, given that this PEP declines to make changes to the ``[project]``
-table, changing ``[build-system]`` is also deferred.
-
+``[project.dependencies]`` および ``[project.optional-dependencies]`` の動作を変更することと比較して、``[build-system.requires]`` の動作を変更することは影響が大きく、潜在的な使用例が少ないです。したがって、この PEP が ``[project]`` テーブルの変更を行わないことを決定したため、``[build-system]`` の変更も延期されます。
 
 Why not support a Dependency Group which includes the current project?
 ----------------------------------------------------------------------
 
-Several usage scenarios for dependency groups revolve around installing a
-dependency group alongside a package defined in the ``[project]`` table.
-For example, testing a package involves installing testing dependencies and the
-package itself. Additionally, the compatibility of a dependency group with the
-main package is a valuable input to lockfile generators.
+依存関係グループに関するいくつかの使用シナリオは、パッケージを ``[project]`` テーブルで定義された依存関係グループと一緒にインストールすることを中心に展開しています。たとえば、パッケージをテストするには、テスト依存関係とパッケージ自体をインストールする必要があります。さらに、依存関係グループの互換性は、ロックファイル生成にとって貴重な入力です。
 
-In such cases, it is desirable for a Dependency Group to declare that it
-depends upon the project itself. Example syntaxes from discussions included
-``{include-project = true}`` and ``{include-group = ":project:"}``.
+このような場合、依存関係グループがプロジェクト自体に依存していることを宣言することが望ましいです。議論からの例として、``{include-project = true}`` および ``{include-group = ":project:"}`` などの構文が含まれます。
 
-However, if a specification is established to extend :pep:`508` with Path
-Dependencies, this would result in Dependency Groups having two ways of
-specifying the main package. For example, if ``.`` becomes formally supported,
-and ``{include-project = true}`` is included in this PEP, then dependency
-groups may specify any of the following groups
+ただし、:pep:`508` を拡張してパス依存関係をサポートする仕様が確立された場合、依存関係グループにはパッケージ自体を指定する 2 つの方法が存在することになります。たとえば、``.`` が正式にサポートされ、``{include-project = true}`` がこの PEP に含まれる場合、依存関係グループは次のいずれかのグループを指定できます。
 
 .. code-block:: toml
 
@@ -819,42 +540,32 @@ groups may specify any of the following groups
     case3 = [{include-project = true}, "."]
     case4 = [{include-project = false}, "."]
 
-In order to avoid a confusing future in which multiple different options
-specify the package defined in ``pyproject.toml``, any syntax for declaring
-this relationship is omitted from this PEP.
+このため、``pyproject.toml`` でパッケージを指定するための複数の異なるオプションが存在する混乱を避けるために、この PEP にはこの関係を宣言する構文は含まれていません。
 
 .. _prior_art:
 
 Appendix A: Prior Art in Non-Python Languages
 =============================================
 
-This section is primarily informational and serves to document how other
-language ecosystems solve similar problems.
+このセクションは主に情報提供を目的としており、他の言語エコシステムが同様の問題をどのように解決しているかを文書化するためのものです。
 
 .. _javascript_prior_art:
 
 JavaScript and ``package.json``
 -------------------------------
 
-In the JavaScript community, packages contain a canonical configuration and
-data file, similar in scope to ``pyproject.toml``, at ``package.json``.
+JavaScript コミュニティでは、パッケージは ``pyproject.toml`` に似た範囲の標準的な構成およびデータファイルを ``package.json`` に含めます。
 
-Two keys in ``package.json`` control dependency data: ``"dependencies"`` and
-``"devDependencies"``. The role of ``"dependencies"`` is effectively the same
-as that of ``[project.dependencies]`` in ``pyproject.toml``, declaring the
-direct dependencies of a package.
+``package.json`` の 2 つのキーが依存関係データを制御します。``"dependencies"`` と ``"devDependencies"`` です。``"dependencies"`` の役割は、``pyproject.toml`` の ``[project.dependencies]`` と実質的に同じであり、パッケージの直接の依存関係を宣言します。
 
 ``"dependencies"`` data
 '''''''''''''''''''''''
 
-Dependency data is declared in ``package.json`` as a mapping from package names
-to version specifiers.
+依存関係データは、パッケージ名からバージョン指定子へのマッピングとして ``package.json`` に宣言されます。
 
-Version specifiers support a small grammar of possible versions, ranges, and
-other values, similar to Python's :pep:`440` version specifiers.
+バージョン指定子は、Python の :pep:`440` バージョン指定子に似た、バージョン、範囲、およびその他の値の小さな文法をサポートします。
 
-For example, here is a partial ``package.json`` file declaring a few
-dependencies:
+たとえば、次のような依存関係を宣言する部分的な ``package.json`` ファイルがあります。
 
 .. code-block:: json
 
@@ -866,30 +577,18 @@ dependencies:
         }
     }
 
-The use of the ``@`` symbol is a `scope
-<https://docs.npmjs.com/cli/v10/using-npm/scope>`__ which declares the package
-owner, for organizationally owned packages.
-``"@angular/compiler"`` therefore declares a package named ``compiler`` grouped
-under ``angular`` ownership.
+``@`` 記号の使用は、パッケージ所有者を宣言する `scope <https://docs.npmjs.com/cli/v10/using-npm/scope>`__ です。したがって、``"@angular/compiler"`` は ``angular`` 所有権の下にグループ化された ``compiler`` という名前のパッケージを宣言します。
 
 Dependencies Referencing URLs and Local Paths
 '''''''''''''''''''''''''''''''''''''''''''''
 
-Dependency specifiers support a syntax for URLs and Git repositories, similar
-to the provisions in Python packaging.
+依存関係指定子は、URL および Git リポジトリの構文をサポートしており、Python パッケージングの規定に似ています。
 
-URLs may be used in lieu of version numbers.
-When used, they implicitly refer to tarballs of package source code.
+URL はバージョン番号の代わりに使用できます。使用される場合、パッケージのソースコードの tarball を暗黙的に参照します。
 
-Git repositories may be similarly used, including support for committish
-specifiers.
+Git リポジトリも同様に使用でき、コミット指定子のサポートも含まれます。
 
-Unlike :pep:`440`, NPM allows for the use of local paths to package source code
-directories for dependencies. When these data are added to ``package.json`` via
-the standard ``npm install --save`` command, the path is normalized to a
-relative path, from the directory containing ``package.json``, and prefixed
-with ``file:``. For example, the following partial ``package.json`` contains a
-reference to a sibling of the current directory:
+:pep:`440` とは異なり、NPM は依存関係のためにローカル パスをパッケージ ソースコード ディレクトリに使用することを許可します。これらのデータが標準の ``npm install --save`` コマンドを介して ``package.json`` に追加されると、パスは ``package.json`` を含むディレクトリからの相対パスに正規化され、``file:`` でプレフィックスされます。たとえば、次の部分的な ``package.json`` には、現在のディレクトリの兄弟を参照する参照が含まれています。
 
 .. code-block:: json
 
@@ -899,36 +598,21 @@ reference to a sibling of the current directory:
         }
     }
 
-The `official NPM documentation
-<https://docs.npmjs.com/cli/v8/configuring-npm/package-json#local-paths>`__
-states that local path dependencies "should not" be published to public package
-repositories, but makes no statement about the inherent validity or invalidity
-of such dependency data in published packages.
+`公式 NPM ドキュメント <https://docs.npmjs.com/cli/v8/configuring-npm/package-json#local-paths>`__ では、ローカル パス依存関係は公開パッケージ リポジトリに公開すべきではないと述べていますが、そのような依存関係データが公開パッケージで有効か無効かについては言及していません。
 
 ``"devDependencies"`` data
 ''''''''''''''''''''''''''
 
-``package.json`` is permitted to contain a second section named
-``"devDependencies"``, in the same format as ``"dependencies"``.
-The dependencies declared in ``"devDependencies"`` are not installed by default
-when a package is installed from the package repository (e.g. as part of a
-dependency being resolved) but are installed when ``npm install`` is run in the
-source tree containing ``package.json``.
+``package.json`` には、``"dependencies"`` と同じ形式で ``"devDependencies"`` という名前の 2 番目のセクションを含めることが許可されています。``"devDependencies"`` に宣言された依存関係は、パッケージがパッケージ リポジトリからインストールされるとき (例: 依存関係が解決される一部として) にはデフォルトではインストールされませんが、``package.json`` を含むソース ツリーで ``npm install`` が実行されるとインストールされます。
 
-Just as ``"dependencies"`` supports URLs and local paths, so does
-``"devDependencies"``.
+``"dependencies"`` が URL およびローカル パスをサポートするのと同様に、``"devDependencies"`` もサポートします。
 
 ``"peerDependencies"`` and ``"optionalDependencies"``
 '''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-There are two additional, related sections in ``package.json`` which have
-relevance.
+``package.json`` には、関連する 2 つの追加セクションがあります。
 
-``"peerDependencies"`` declares a list of dependencies in the same format as
-``"dependencies"``, but with the meaning that these are a compatibility
-declaration.
-For example, the following data declares compatibility with package ``foo``
-version 2:
+``"peerDependencies"`` は、``"dependencies"`` と同じ形式で依存関係のリストを宣言しますが、これらは互換性の宣言であることを意味します。たとえば、次のデータはパッケージ ``foo`` バージョン 2 との互換性を宣言します。
 
 .. code-block:: json
 
@@ -938,18 +622,14 @@ version 2:
         }
     }
 
-``"optionalDependencies"`` declares a list of dependencies which should be
-installed if possible, but which should not be treated as failures if they are
-unavailable. It also uses the same mapping format as ``"dependencies"``.
+``"optionalDependencies"`` は、可能であればインストールするが、利用できない場合は失敗と見なさない依存関係のリストを宣言します。これも ``"dependencies"`` と同じマッピング形式を使用します。
 
 ``"peerDependenciesMeta"``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``"peerDependenciesMeta"`` is a section which allows for additional control
-over how ``"peerDependencies"`` are treated.
+``"peerDependenciesMeta"`` は、``"peerDependencies"`` の処理方法をさらに制御できるセクションです。
 
-Warnings about missing dependencies can be disabled by setting packages to
-``optional`` in this section, as in the following sample:
+このセクションでパッケージを ``optional`` に設定することで、欠落している依存関係に関する警告を無効にできます。次のサンプルのように：
 
 .. code-block:: json
 
@@ -967,50 +647,34 @@ Warnings about missing dependencies can be disabled by setting packages to
 ``--omit`` and ``--include``
 ''''''''''''''''''''''''''''
 
-The ``npm install`` command supports two options, ``--omit`` and ``--include``,
-which can control whether "prod", "dev", "optional", or "peer" dependencies are installed.
+``npm install`` コマンドは、``--omit`` および ``--include`` の 2 つのオプションをサポートしており、これにより「prod」、「dev」、「optional」、または「peer」依存関係がインストールされるかどうかを制御できます。
 
-The "prod" name refers to dependencies listed under ``"dependencies"``.
+「prod」名は ``"dependencies"`` にリストされている依存関係を指します。
 
-By default, all four groups are installed when ``npm install`` is executed
-against a source tree, but these options can be used to control installation
-behavior more precisely.
-Furthermore, these values can be declared in ``.npmrc`` files, allowing
-per-user and per-project configurations to control installation behaviors.
+デフォルトでは、``npm install`` がソース ツリーで実行されると、これらの 4 つのグループすべてがインストールされますが、これらのオプションを使用してインストールの動作をより正確に制御できます。さらに、これらの値は ``.npmrc`` ファイルに宣言でき、ユーザーごとおよびプロジェクトごとの構成によりインストールの動作を制御できます。
 
 .. _ruby_prior_art:
 
 Ruby & Ruby Gems
 ----------------
 
-Ruby projects may or may not be intended to produce packages ("gems") in the
-Ruby ecosystem. In fact, the expectation is that most users of the language do
-not want to produce gems and have no interest in producing their own packages.
-Many tutorials do not touch on how to produce packages, and the toolchain never
-requires user code to be packaged for supported use-cases.
+Ruby プロジェクトは、Ruby エコシステムでパッケージ (「ジェム」) を生成することを意図しているかどうかに関係なく存在します。実際、言語のほとんどのユーザーは自分のパッケージを生成することに興味がなく、パッケージを生成することを望んでいないと期待されています。多くのチュートリアルでは、パッケージの生成について触れておらず、ツールチェーンはサポートされているユースケースに対してユーザーコードをパッケージ化する必要はありません。
 
-Ruby splits requirement specification into two separate files.
+Ruby は依存関係の指定を 2 つの別々のファイルに分割します。
 
-- ``Gemfile``: a dedicated file which only supports requirement data in the form
-  of dependency groups
-- ``<package>.gemspec``: a dedicated file for declaring package (gem) metadata
+- ``Gemfile``: 依存関係グループの形式でのみ依存関係データをサポートする専用ファイル
+- ``<package>.gemspec``: パッケージ (ジェム) メタデータを宣言する専用ファイル
 
-The ``bundler`` tool, providing the ``bundle`` command, is the primary interface
-for using ``Gemfile`` data.
+``bundler`` ツールは、``bundle`` コマンドを提供し、``Gemfile`` データを使用するための主要なインターフェイスです。
 
-The ``gem`` tool is responsible for building gems from ``.gemspec`` data, via the
-``gem build`` command.
+``gem`` ツールは、``gem build`` コマンドを介して ``.gemspec`` データからジェムをビルドする責任があります。
 
 Gemfiles & bundle
 '''''''''''''''''
 
-A `Gemfile <https://bundler.io/v1.12/man/gemfile.5.html>`__ is a Ruby file
-containing ``gem`` directives enclosed in any number of ``group`` declarations.
-``gem`` directives may also be used outside of the ``group`` declaration, in which
-case they form an implicitly unnamed group of dependencies.
+`Gemfile <https://bundler.io/v1.12/man/gemfile.5.html>`__ は、任意の数の ``group`` 宣言に囲まれた ``gem`` ディレクティブを含む Ruby ファイルです。``gem`` ディレクティブは ``group`` 宣言の外部でも使用でき、その場合、依存関係の暗黙の名前のないグループを形成します。
 
-For example, the following ``Gemfile`` lists ``rails`` as a project dependency.
-All other dependencies are listed under groups:
+たとえば、次の ``Gemfile`` は ``rails`` をプロジェクトの依存関係としてリストしています。他のすべての依存関係はグループの下にリストされています。
 
 .. code-block:: ruby
 
@@ -1031,29 +695,18 @@ All other dependencies are listed under groups:
       gem 'nokogiri'
     end
 
-If a user executes ``bundle install`` with these data, all groups are
-installed. Users can deselect groups by creating or modifying a bundler config
-in ``.bundle/config``, either manually or via the CLI. For example, ``bundle
-config set --local without 'lint:docs'``.
+ユーザーがこれらのデータを使用して ``bundle install`` を実行すると、すべてのグループがインストールされます。ユーザーは、``.bundle/config`` にバンドラー構成を作成または変更することで、グループを選択解除できます。たとえば、``bundle config set --local without 'lint:docs'``。
 
-It is not possible, with the above data, to exclude the top-level use of the
-``'rails'`` gem or to refer to that implicit grouping by name.
+トップレベルで ``'rails'`` ジェムの使用を除外したり、その暗黙のグループを名前で参照したりすることはできません。
 
 gemspec and packaged dependency data
 ''''''''''''''''''''''''''''''''''''
 
-A `gemspec file <https://guides.rubygems.org/specification-reference/>`__ is a
-ruby file containing a `Gem::Specification
-<https://ruby-doc.org/stdlib-3.0.1/libdoc/rubygems/rdoc/Gem/Specification.html>`__
-instance declaration.
+`gemspec file <https://guides.rubygems.org/specification-reference/>`__ は、`Gem::Specification <https://ruby-doc.org/stdlib-3.0.1/libdoc/rubygems/rdoc/Gem/Specification.html>`__ インスタンス宣言を含む Ruby ファイルです。
 
-Only two fields in a ``Gem::Specification`` pertain to package dependency data.
-These are ``add_development_dependency`` and ``add_runtime_dependency``.
-A ``Gem::Specification`` object also provides methods for adding dependencies
-dynamically, including ``add_dependency`` (which adds a runtime dependency).
+パッケージ (ジェム) 依存関係データに関連する ``Gem::Specification`` オブジェクトのフィールドは 2 つだけです。``add_development_dependency`` と ``add_runtime_dependency`` です。``Gem::Specification`` オブジェクトは、動的に依存関係を追加するためのメソッドも提供しており、``add_dependency`` (ランタイム依存関係を追加) も含まれます。
 
-Here is a variant of the ``rails.gemspec`` file, with many fields removed or
-shortened to simplify:
+次に、``rails.gemspec`` ファイルのバリアントを示します。多くのフィールドが削除または短縮されて簡略化されています。
 
 .. code-block:: ruby
 
@@ -1078,13 +731,9 @@ shortened to simplify:
       s.add_dependency "railties",      version
     end
 
-Note that there is no use of ``add_development_dependency``.
-Some other mainstream, major packages (e.g. ``rubocop``) do not use development
-dependencies in their gems.
+``add_development_dependency`` の使用はありません。その他の主流の主要パッケージ (例: ``rubocop``) は、ジェム内で開発依存関係を使用していません。
 
-Other projects *do* use this feature. For example, ``kramdown`` makes use of
-development dependencies, containing the following specification in its
-``Rakefile``:
+他のプロジェクトはこの機能を使用しています。たとえば、``kramdown`` は開発依存関係を使用しており、その ``Rakefile`` に次の仕様が含まれています。
 
 .. code-block:: ruby
 
@@ -1093,20 +742,14 @@ development dependencies, containing the following specification in its
     s.add_development_dependency 'rouge', '~> 3.0', '>= 3.26.0'
     s.add_development_dependency 'stringex', '~> 1.5.1'
 
-The purpose of development dependencies is only to declare an implicit group,
-as part of the ``.gemspec``, which can then be used by ``bundler``.
+開発依存関係の目的は、``bundler`` によって使用される暗黙のグループを宣言することだけです。
 
-For full details, see the ``gemspec`` directive in ``bundler``\'s
-`documentation on Gemfiles
-<https://bundler.io/v1.12/man/gemfile.5.html#GEMSPEC-gemspec->`__.
-However, the integration between ``.gemspec`` development dependencies and
-``Gemfile``/``bundle`` usage is best understood via an example.
+完全な詳細については、``Gemfiles`` に関する ``bundler`` の `documentation on Gemfiles <https://bundler.io/v1.12/man/gemfile.5.html#GEMSPEC-gemspec->`__ ディレクティブを参照してください。ただし、``.gemspec`` 開発依存関係と ``Gemfile``/``bundle`` の使用との統合は、例を通じて最もよく理解されます。
 
 gemspec development dependency example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Consider the following simple project in the form of a ``Gemfile`` and ``.gemspec``.
-The ``cool-gem.gemspec`` file:
+次のような ``Gemfile`` および ``.gemspec`` の形式の単純なプロジェクトを考えてみましょう。``cool-gem.gemspec`` ファイル：
 
 .. code-block:: ruby
 
@@ -1123,7 +766,7 @@ The ``cool-gem.gemspec`` file:
       s.add_development_dependency 'kramdown'
     end
 
-and the ``Gemfile``:
+および ``Gemfile``:
 
 .. code-block:: ruby
 
@@ -1131,13 +774,9 @@ and the ``Gemfile``:
 
     gemspec
 
-The ``gemspec`` directive in ``Gemfile`` declares a dependency on the local
-package, ``cool-gem``, defined in the locally available ``cool-gem.gemspec``
-file. It *also* implicitly adds all development dependencies to a dependency
-group named ``development``.
+``Gemfile`` の ``gemspec`` ディレクティブは、ローカル パッケージ ``cool-gem`` に依存関係を宣言し、ローカルで利用可能な ``cool-gem.gemspec`` ファイルで定義されます。また、すべての開発依存関係を ``development`` という名前の依存関係グループに暗黙的に追加します。
 
-Therefore, in this case, the ``gemspec`` directive is equivalent to the
-following ``Gemfile`` content:
+したがって、この場合、``gemspec`` ディレクティブは次の ``Gemfile`` コンテンツと同等です。
 
 .. code-block:: ruby
 
@@ -1152,66 +791,46 @@ following ``Gemfile`` content:
 Appendix B: Prior Art in Python
 ===============================
 
-In the absence of any prior standard for Dependency Groups, two known workflow
-tools, PDM and Poetry, have defined their own solutions.
+依存関係グループの標準がない場合、PDM および Poetry という 2 つの既知のワークフロー ツールが独自のソリューションを定義しています。
 
-This section will primarily focus on these two tools as cases of prior art
-regarding the definition and use of Dependency Groups in Python.
+このセクションでは、主に Python における依存関係グループの定義と使用に関する先行事例として、これら 2 つのツールに焦点を当てます。
 
 Projects are Packages
 ---------------------
 
-Both PDM and Poetry treat the projects they support as packages.
-This allows them to use and interact with standard ``pyproject.toml`` metadata
-for some of their needs, and allows them to support installation of the
-"current project" by doing a build and install using their build backends.
+PDM および Poetry は、サポートするプロジェクトをパッケージとして扱います。これにより、いくつかのニーズに対して標準の ``pyproject.toml`` メタデータを使用および操作でき、ビルド バックエンドを使用してビルドおよびインストールを行うことで「現在のプロジェクト」のインストールをサポートできます。
 
-Effectively, this means that neither Poetry nor PDM supports non-package projects.
+実質的に、Poetry および PDM は非パッケージ プロジェクトをサポートしていません。
 
 Non-Standard Dependency Specifiers
 ----------------------------------
 
-PDM and Poetry extend :pep:`508` dependency specifiers with additional features
-which are not part of any shared standard.
-The two tools use slightly different approaches to these problems, however.
+PDM および Poetry は、追加の機能を持つ :pep:`508` 依存関係指定子を拡張しており、共有標準の一部ではありません。2 つのツールはこれらの問題に対してわずかに異なるアプローチを使用しています。
 
-PDM supports specifying local paths, and editable installs, via a syntax which
-looks like a set of arguments to ``pip install``. For example, the following
-dependency group includes a local package in editable mode:
+PDM は、ローカル パスおよび編集可能なインストールを指定するために、``pip install`` の引数のセットのような構文をサポートしています。たとえば、次の依存関係グループには、ローカル パッケージが編集可能モードで含まれています。
 
 .. code-block:: toml
 
     [tool.pdm.dev-dependencies]
     mygroup = ["-e file:///${PROJECT_ROOT}/foo"]
 
-This declares a dependency group ``mygroup`` which includes a local editable
-install from the ``foo`` directory.
+これは、``foo`` ディレクトリからのローカル編集可能インストールを含む ``mygroup`` という依存関係グループを宣言します。
 
-Poetry describes dependency groups as tables, mapping package names to
-specifiers. For example, the same configuration as the above ``mygroup``
-example might appear as follows under Poetry:
+Poetry は、パッケージ名を指定子にマッピングするテーブルとして依存関係グループを説明します。たとえば、上記の ``mygroup`` の例と同じ構成は、Poetry では次のように表示されます。
 
 .. code-block:: toml
 
     [tool.poetry.group.mygroup]
     foo = { path = "foo", editable = true }
 
-PDM restricts itself to a string syntax, and Poetry introduces tables which
-describe dependencies.
+PDM は文字列構文に制限されており、Poetry は依存関係を説明するテーブルを導入しています。
 
 Installing and Referring to Dependency Groups
 ---------------------------------------------
 
-Both PDM and Poetry have tool-specific support for installing dependency
-groups. Because both projects support their own lockfile formats, they also
-both have the capability to transparently use a dependency group name to refer
-to the *locked* dependency data for that group.
+PDM および Poetry の両方には、依存関係グループをインストールするためのツール固有のサポートがあります。両方のプロジェクトは独自のロックファイル形式をサポートしているため、依存関係グループ名を使用してそのグループのロックされたバリアントを参照する機能もあります。
 
-However, neither tool's dependency groups can be referenced natively from other
-tools like ``tox``, ``nox``, or ``pip``.
-Attempting to install a dependency group under ``tox``, for example, requires
-an explicit call to PDM or Poetry to parse their dependency data and do the
-relevant installation step.
+ただし、どちらのツールの依存関係グループも ``tox``、``nox``、または ``pip`` などの他のツールからネイティブに参照することはできません。依存関係グループをインストールしようとすると、PDM または Poetry に明示的に呼び出して依存関係データを解析し、関連するインストール手順を実行する必要があります。
 
 .. _use_cases:
 
@@ -1221,50 +840,28 @@ Appendix C: Use Cases
 Web Applications
 ----------------
 
-A web application (e.g. a Django or Flask app) often does not need to build a
-distribution, but bundles and ships its source to a deployment toolchain.
+Web アプリケーション (例: Django または Flask アプリ) は、配布物をビルドする必要はありませんが、ソースをバンドルしてデプロイメント ツールチェーンに送信します。
 
-For example, a source code repository may define Python packaging metadata as
-well as containerization or other build pipeline metadata (``Dockerfile``,
-etc).
-The Python application is built by copying the entire repository into a
-build context, installing dependencies, and bundling the result as a machine
-image or container.
+たとえば、ソースコード リポジトリは、Python パッケージング メタデータとコンテナ化やその他のビルド パイプライン メタデータ (``Dockerfile`` など) を定義する場合があります。Python アプリケーションは、リポジトリ全体をビルド コンテキストにコピーし、依存関係をインストールし、結果をマシン イメージやコンテナとしてバンドルすることでビルドされます。
 
-Such applications have dependency groups for the build, but also for linting,
-testing, etc. In practice, today, these applications often define themselves as
-packages to be able to use packaging tools and mechanisms like ``extras`` to
-manage their dependency groups. However, they are not conceptually packages,
-meant for distribution in sdist or wheel format.
+このようなアプリケーションには、ビルドのための依存関係グループがあり、リンティング、テストなどのための依存関係グループもあります。実際には、これらのアプリケーションは、パッケージング ツールや ``extras`` などのメカニズムを使用して依存関係グループを管理するために、パッケージとして自分自身を定義することがよくあります。ただし、概念的には、これらはパッケージではなく、sdist やホイール形式での配布を意図していません。
 
-Dependency Groups allow these applications to define their various dependencies
-without relying on packaging metadata, and without trying to express their
-needs in packaging terms.
+依存関係グループを使用すると、これらのアプリケーションはパッケージング メタデータに依存せず、パッケージング用語でニーズを表現することなく、さまざまな依存関係を定義できます。
 
 Libraries
 ---------
 
-Libraries are Python packages which build distributions (sdist and wheel) and
-publish them to PyPI.
+ライブラリは、sdist およびホイールをビルドし、PyPI に公開する Python パッケージです。
 
-For libraries, Dependency Groups represent an alternative to ``extras`` for
-defining groups of development dependencies, with the important advantages
-noted above.
+ライブラリにとって、依存関係グループは開発依存関係を定義するための ``extras`` の代替手段を提供し、上記の重要な利点があります。
 
-A library may define groups for ``test`` and ``typing`` which allow testing and
-type-checking, and therefore rely on the library's own dependencies (as
-specified in ``[project.dependencies]``).
+ライブラリは、テストおよび型チェックを可能にする ``test`` および ``typing`` のグループを定義し、そのためにライブラリ自体の依存関係 (``[project.dependencies]`` に指定) に依存します。
 
-Other development needs may not require installation of the package at all. For
-example, a ``lint`` Dependency Group may be valid and faster to install without
-the library, as it only installs tools like ``black``, ``ruff``, or ``flake8``.
+他の開発ニーズには、パッケージのインストールがまったく必要ない場合があります。たとえば、``lint`` 依存関係グループは、``black``、``ruff``、``flake8`` などのツールのみをインストールするため、ライブラリなしで有効であり、インストールが速くなります。
 
-``lint`` and ``test`` environments may also be valuable locations to hook in
-IDE or editor support. See the case below for a fuller description of such
-usage.
+``lint`` および ``test`` 環境は、IDE やエディタのサポートをフックするための貴重な場所でもあります。以下のケースでそのような使用法の詳細な説明を参照してください。
 
-Here's an example Dependency Groups table which might be suitable for a
-library:
+次に、ライブラリに適した依存関係グループ テーブルの例を示します。
 
 .. code-block:: toml
 
@@ -1274,36 +871,25 @@ library:
     lint = ["black", "flake8"]
     typing-test = [{include-group = "typing"}, "pytest<8"]
 
-Note that none of these implicitly install the library itself.
-It is therefore the responsibility of any environment management toolchain to
-install the appropriate Dependency Groups along with the library when needed,
-as in the case of ``test``.
+これらのいずれもライブラリ自体を暗黙的にインストールしないことに注意してください。したがって、環境管理ツールチェーンが適切な依存関係グループと一緒にライブラリをインストールする必要があります。たとえば、``test`` の場合です。
 
 Data Science Projects
 ---------------------
 
-Data Science Projects typically take the form of a logical collection of
-scripts and utilities for processing and analyzing data, using a common
-toolchain. Components may be defined in the Jupyter Notebook format (ipynb),
-but rely on the same common core set of utilities.
+データ サイエンス プロジェクトは、共通のツールチェーンを使用してデータを処理および分析するためのスクリプトやユーティリティの論理的なコレクションの形式を取ります。コンポーネントは Jupyter Notebook 形式 (ipynb) で定義される場合がありますが、同じ共通のコア ツールセットに依存しています。
 
-In such a project, there is no package to build or install. Therefore,
-``pyproject.toml`` currently does not offer any solution for dependency
-management or declaration.
+このようなプロジェクトでは、ビルドしてインストールするパッケージはありません。したがって、``pyproject.toml`` は現在、依存関係管理や宣言のためのソリューションを提供していません。
 
-It is valuable for such a project to be able to define at least one major
-grouping of dependencies. For example:
+このようなプロジェクトにとって、少なくとも 1 つの主要な依存関係グループを定義できることは価値があります。たとえば：
 
 .. code-block:: toml
 
     [dependency-groups]
     main = ["numpy", "pandas", "matplotlib"]
 
-However, it may also be necessary for various scripts to have additional
-supporting tools. Projects may even have conflicting or incompatible tools or
-tool versions for different components, as they evolve over time.
+ただし、さまざまなスクリプトには追加のサポート ツールが必要な場合もあります。プロジェクトは進化するにつれて、さまざまなコンポーネントに対して競合するツールや互換性のないツールやツールのバージョンを持つこともあります。
 
-Consider the following more elaborate configuration:
+次のようなより詳細な構成を考えてみましょう。
 
 .. code-block:: toml
 
@@ -1312,65 +898,42 @@ Consider the following more elaborate configuration:
     scikit = [{include-group = "main"}, "scikit-learn==1.3.2"]
     scikit-old = [{include-group = "main"}, "scikit-learn==0.24.2"]
 
-This defines ``scikit`` and ``scikit-old`` as two similar variants of the
-common suite of dependencies, pulling in different versions of ``scikit-learn``
-to suit different scripts.
+これにより、``scikit`` および ``scikit-old`` が、異なるバージョンの ``scikit-learn`` を引き込むために、共通の依存関係セットの 2 つの類似バリアントとして定義されます。
 
-This PEP only defines these data. It does not formalize any mechanism for a
-Data Science Project (or any other type of project) to install the dependencies
-into known environments or associate those environments with the various
-scripts. Such combinations of data are left as a problem for tool authors to
-solve, and perhaps eventually standardize.
+この PEP はこれらのデータのみを定義します。データ サイエンス プロジェクト (またはその他のタイプのプロジェクト) が依存関係を既知の環境にインストールし、これらの環境をさまざまなスクリプトに関連付けるためのメカニズムを公式化することはありません。このようなデータの組み合わせは、ツール作成者が解決し、最終的には標準化する問題として残されています。
 
 Lockfile Generation
 -------------------
 
-There are a number of tools which generate lockfiles in the Python ecosystem
-today. PDM and Poetry each use their own lockfile formats, and pip-tools
-generates ``requirements.txt`` files with version pins and hashes.
+現在、Python エコシステムではロックファイルを生成するツールがいくつかあります。PDM および Poetry はそれぞれ独自のロックファイル形式を使用しており、pip-tools はバージョンピンおよびハッシュを含む ``requirements.txt`` ファイルを生成します。
 
-Dependency Groups are not an appropriate place to store lockfiles, as they lack
-many of the necessary features. Most notably, they cannot store hashes, which
-most lockfile users consider essential.
+依存関係グループはロックファイルを保存する適切な場所ではありません。必要な機能が多く欠けているためです。特に、ほとんどのロックファイル ユーザーが重要と考えるハッシュを保存できません。
 
-However, Dependency Groups are a valid input to tools which generate lockfiles.
-Furthermore, PDM and Poetry both allow a Dependency Group name (under their
-notions of Dependency Groups) to be used to refer to its locked variant.
+ただし、依存関係グループはロックファイルを生成するツールへの有効な入力です。さらに、PDM および Poetry の両方は、依存関係グループ名を使用してそのグループのロックされたバリアントを参照する機能を提供します。
 
-Therefore, consider a tool which produces lockfiles, here called ``$TOOL``.
-It might be used as follows:
+したがって、``$TOOL`` と呼ばれるロックファイルを生成するツールを考えてみましょう。次のように使用される場合があります。
 
 .. code:: shell
 
     $TOOL lock --dependency-group=test
     $TOOL install --dependency-group=test --use-locked
 
-All that such a tool needs to do is to ensure that its lockfile data records
-the name ``test`` in order to support such usage.
+そのようなツールが行う必要があるのは、ロックファイル データに ``test`` という名前を記録してその使用をサポートすることだけです。
 
-The mutual compatibility of Dependency Groups is not guaranteed. For example,
-the Data Science example above shows conflicting versions of ``scikit-learn``.
-Therefore, installing multiple locked dependency groups in tandem may require
-that tools apply additional constraints or generate additional lockfile data.
-These problems are considered out of scope for this PEP.
+依存関係グループの相互互換性は保証されていません。たとえば、上記のデータ サイエンスの例では、``scikit-learn`` の競合するバージョンが示されています。したがって、複数のロックされた依存関係グループを一緒にインストールするには、ツールが追加の制約を適用するか、追加のロックファイル データを生成する必要があります。これらの問題は、この PEP の範囲外と見なされます。
 
-As two examples of how combinations might be locked:
+組み合わせをロックする方法の例としては、次のようなものがあります。
 
-* A tool might require that lockfile data be explicitly generated for any
-  combination to be considered valid
+* ツールは、組み合わせが有効と見なされるためにロックファイル データが明示的に生成されることを要求する場合があります。
 
-* Poetry implements the requirement that all Dependency Groups be mutually
-  compatible, and generates only one locked version. (Meaning it finds a single
-  solution, rather than a set or matrix of solutions.)
+* Poetry は、すべての依存関係グループが相互に互換性があることを要求し、1 つのロックされたバージョンのみを生成します (つまり、単一のソリューションを見つけるのではなく、ソリューションのセットまたはマトリックスを見つける)。
 
 Environment Manager Inputs
 --------------------------
 
-A common usage in tox, Nox, and Hatch is to install a set of dependencies into
-a testing environment.
+tox、Nox、Hatch などの一般的な使用法は、テスト環境に依存関係のセットをインストールすることです。
 
-For example, under ``tox.ini``, type checking dependencies may be defined
-inline:
+たとえば、``tox.ini`` では、型チェック依存関係がインラインで定義される場合があります。
 
 .. code-block:: ini
 
@@ -1380,53 +943,33 @@ inline:
         useful-types
     commands = pyright src/
 
-This combination provides a desirable developer experience within a limited
-context. Under the relevant environment manager, the dependencies which are
-needed for the test environment are declared alongside the commands which need
-those dependencies. They are not published in package metadata, as ``extras``
-would be, and they are discoverable for the tool which needs them to build the
-relevant environment.
+この組み合わせにより、限られたコンテキスト内で望ましい開発者エクスペリエンスが提供されます。関連する環境マネージャーの下で、テスト環境に必要な依存関係が宣言され、それらの依存関係グループが関連するコマンドと明確に関連付けられます。これらはパッケージ メタデータとして公開されず、``extras`` のように公開されず、ツールがそれらを使用して関連する環境を構築するために検出可能です。
 
-Dependency Groups apply to such usages by effectively "lifting" these
-requirements data from a tool-specific location into a more broadly available
-one. In the example above, only ``tox`` has access to the declared list of
-dependencies. Under an implementation supporting dependency groups, the same
-data might be available in a Dependency Group:
+依存関係グループは、このような使用法に適用され、これらの依存関係データをツール固有の場所からより広く利用可能な場所に「持ち上げる」ことができます。上記の例では、依存関係のリストを宣言するのは ``tox`` のみです。依存関係グループをサポートする実装の下では、同じデータが依存関係グループに存在する場合があります。
 
 .. code-block:: toml
 
     [dependency-groups]
     typing = ["pyright", "useful-types"]
 
-The data can then be used under multiple tools. For example, ``tox`` might
-implement support as ``dependency_groups = typing``, replacing the ``deps``
-usage above.
+このデータは複数のツールで使用できます。たとえば、``tox`` は ``dependency_groups = typing`` としてサポートを実装し、上記の ``deps`` の使用を置き換えることができます。
 
-In order for Dependency Groups to be a viable alternative for users of
-environment managers, the environment managers will need to support processing
-Dependency Groups similarly to how they support inline dependency declaration.
+依存関係グループが環境マネージャーのユーザーにとって実行可能な代替手段となるためには、環境マネージャーがインライン依存関係の宣言と同様に依存関係グループを処理することをサポートする必要があります。
 
 IDE and Editor Use of Requirements Data
 ---------------------------------------
 
-IDE and editor integrations may benefit from conventional or configurable name
-definitions for Dependency Groups which are used for integrations.
+IDE およびエディタの統合は、依存関係グループがさまざまな目的に使用されるための標準名や構成可能な名前の定義から恩恵を受ける可能性があります。
 
-There are at least two known scenarios in which it is valuable for an editor or
-IDE to be capable of discovering the non-published dependencies of a project:
+プロジェクトの公開されていない依存関係を検出できることが価値のあるシナリオが少なくとも 2 つ知られています。
 
-* testing: IDEs such as VS Code support GUI interfaces for running particular
-  tests
+* テスト: VS Code などの IDE は、特定のテストを実行するための GUI インターフェイスをサポートしています。
 
-* linting: editors and IDEs often support linting and autoformatting
-  integrations which highlight or autocorrect errors
+* リンティング: エディタや IDE は、エラーを強調表示したり自動修正したりするリンティングや自動フォーマットの統合をサポートすることがよくあります。
 
-These cases could be handled by defining conventional group names like
-``test``, ``lint``, and ``fix``, or by defining configuration mechanisms which
-allow the selection of Dependency Groups.
+これらのケースは、``test``、``lint``、``fix`` などの標準的なグループ名を定義するか、依存関係グループの選択を許可する構成メカニズムを定義することで処理できます。
 
-For example, the following ``pyproject.toml`` declares the three aforementioned
-groups:
+たとえば、次の ``pyproject.toml`` は、上記の 3 つのグループを宣言しています。
 
 .. code-block:: toml
 
@@ -1435,15 +978,11 @@ groups:
     lint = ["flake8", "mypy"]
     fix = ["black", "isort", "pyupgrade"]
 
-This PEP makes no attempt to standardize such names or reserve them for such
-uses. IDEs may standardize or may allow users to configure the group names used
-for various purposes.
+この PEP は、そのような名前を標準化したり、それらをそのような使用法のために予約したりする試みを行いません。IDE は標準化するか、ユーザーがさまざまな目的のために使用するグループ名を構成できるようにする場合があります。
 
-This declaration allows the project author's knowledge of the appropriate tools
-for the project to be shared with all editors of that project.
+この宣言により、プロジェクトの著者のプロジェクトに適したツールに関する知識が、そのプロジェクトのすべてのエディタに共有されます。
 
 Copyright
 =========
 
-This document is placed in the public domain or under the
-CC0-1.0-Universal license, whichever is more permissive.
+このドキュメントは、パブリック ドメインに置かれるか、より許容される方の CC0-1.0-Universal ライセンスの下に置かれます。
