@@ -58,6 +58,13 @@ class PEPZeroWriter:
     RESERVED = {
         801: "Warsaw",
     }
+    TRANSLATED = [
+        517,
+        518,
+        518,
+        621,
+        735,
+    ]
 
     def __init__(self):
         self.output: list[str] = []
@@ -186,6 +193,12 @@ class PEPZeroWriter:
                 "The `PEPS API </api/peps.json>`__ is a JSON file of metadata about "
                 "all the published PEPs. :doc:`Read more here <api/index>`."
             )
+            self.emit_newline()
+
+        # PEPs by translated
+        if is_pep0:
+            self.emit_title("Translated Index")
+            self.emit_table([pep for pep in peps if pep.number in (self.TRANSLATED)])
             self.emit_newline()
 
         # PEPs by number
