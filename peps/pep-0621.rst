@@ -1,5 +1,5 @@
 PEP: 621
-Title: Storing project metadata in pyproject.toml
+Title: `pyproject.toml` にプロジェクトメタデータを保存する
 Author: Brett Cannon <brett@python.org>,
         Dustin Ingram <di@python.org>,
         Paul Ganssle <paul at ganssle.io>,
@@ -23,440 +23,305 @@ Resolution: https://discuss.python.org/t/pep-621-round-3/5472/109
 .. canonical-pypa-spec:: :ref:`packaging:pyproject-toml-spec`
 
 
-Abstract
-========
+概要
+===============================================================================
 
-This PEP specifies how to write a project's `core metadata`_ in a
-``pyproject.toml`` file for packaging-related tools to consume.
-
-
-Motivation
-==========
-
-The key motivators of this PEP are:
-
-- Encourage users to specify core metadata statically for speed,
-  ease of specification, unambiguity, and deterministic consumption by
-  build back-ends
-- Provide a tool-agnostic way of specifying metadata for ease of
-  learning and transitioning between build back-ends
-- Allow for more code sharing between build back-ends for the
-  "boring parts" of a project's metadata
-
-To speak specifically to the motivation for static metadata, that has
-been an overall goal of the packaging ecosystem for some time. As
-such, making it easy to specify metadata statically is important. This
-also means that raising the cost of specifying data as dynamic is
-acceptable as users should skew towards wanting to provide static
-metadata.
-
-Requiring the distinction between static and dynamic metadata also
-helps with disambiguation for when metadata isn't specified. When any
-metadata *may* be dynamic, it means you never know if the absence of
-metadata is on purpose or because it is to be provided later. By
-requiring that dynamic metadata be specified, it disambiguates the
-intent when metadata goes unspecified.
-
-This PEP does **not** attempt to standardize all possible metadata
-required by a build back-end, only the metadata covered by the
-`core metadata`_ specification which are very common across projects
-and would stand to benefit from being static and consistently
-specified. This means build back-ends are still free and able to
-innovate around patterns like how to specify the files to include in a
-wheel. There is also an included escape hatch for users and build
-back-ends to use when they choose to partially opt-out of this PEP
-(compared to opting-out of this PEP entirely, which is also possible).
-
-This PEP is also not trying to change the underlying `core metadata`_
-in any way. Such considerations should be done in a separate PEP which
-may lead to changes or additions to what this PEP specifies.
+この PEP は、パッケージ関連ツールが消費するためのプロジェクトの `コアメタデータ`_ を ``pyproject.toml`` ファイルに書き込む方法を指定します。
 
 
-Rationale
-=========
+動機
+===============================================================================
 
-The design guidelines the authors of this PEP followed were:
+この PEP の主な動機は次のとおりです：
 
-- Define a representation of as much of the `core metadata`_ in
-  ``pyproject.toml`` as is reasonable
-- Define the metadata statically with an escape hatch for those who
-  want to define it dynamically later via a build back-end
-- Use familiar names where it makes sense, but be willing to use more
-  modern terminology
-- Try to be ergonomic within a TOML file instead of mirroring how
-  build back-ends specify metadata at a low-level when it makes sense
-- Learn from other build back-ends in the packaging ecosystem which
-  have used TOML for their metadata
-- Don't try to standardize things which lack a pre-existing standard
-  at a lower-level
-- *When* metadata is specified using this PEP, it is considered
-  canonical
+- ユーザーがビルドバックエンドによって静的にメタデータを指定することを奨励し、速度、指定の容易さ、曖昧さの排除、および決定論的な消費を実現する
+- ビルドバックエンド間での学習と移行の容易さのために、ツールに依存しない方法でメタデータを指定する
+- プロジェクトのメタデータの「退屈な部分」を共有するために、ビルドバックエンド間でのコード共有を促進する
+
+静的メタデータの指定の動機について具体的に言えば、それはパッケージングエコシステムの全体的な目標です。そのため、メタデータを静的に指定することを容易にすることが重要です。これにより、メタデータを動的に指定するコストを上げることも許容されます。ユーザーは静的メタデータを提供することを望む傾向があるためです。
+
+静的メタデータと動的メタデータの区別を要求することは、メタデータが指定されていない場合の曖昧さを排除するのにも役立ちます。メタデータが動的である可能性がある場合、メタデータが意図的に欠落しているのか、後で提供される予定なのかを知ることはできません。動的メタデータを指定することを要求することで、メタデータが指定されていない場合の意図が明確になります。
+
+この PEP は、ビルドバックエンドによって必要とされるすべてのメタデータを標準化しようとするものではありません。`コアメタデータ`_ 仕様でカバーされているメタデータのみを対象とし、これらはプロジェクト間で非常に一般的であり、静的で一貫して指定されることから利益を得ることができます。これにより、ビルドバックエンドはホイールに含めるファイルの指定方法などのパターンについて引き続き革新することができます。また、ユーザーとビルドバックエンドがこの PEP の一部を選択的にオプトアウトするためのエスケープハッチも含まれています（完全にオプトアウトすることも可能です）。
+
+この PEP は、`コアメタデータ`_ を変更しようとするものではありません。そのような考慮は別の PEP で行われるべきであり、この PEP で指定された内容に変更や追加が行われる可能性があります。
 
 
-Specification
-=============
+根拠
+===============================================================================
 
-When specifying project metadata, tools MUST adhere and honour the
-metadata as specified in this PEP. If metadata is improperly specified
-then tools MUST raise an error to notify the user about their mistake.
+この PEP の著者が従った設計ガイドラインは次のとおりです：
 
-Data specified using this PEP is considered canonical. Tools CANNOT
-remove, add or change data that has been statically specified. Only
-when a field is marked as ``dynamic`` may a tool provide a "new" value.
+- `コアメタデータ`_ のできるだけ多くを ``pyproject.toml`` に表現する
+- メタデータを静的に定義し、後でビルドバックエンドを介して動的に定義するためのエスケープハッチを提供する
+- 適切な場合には馴染みのある名前を使用するが、より現代的な用語を使用することもいとわない
+- ビルドバックエンドが低レベルでメタデータを指定する方法を反映するのではなく、TOML ファイル内で使いやすくする
+- TOML をメタデータに使用している他のビルドバックエンドから学ぶ
+- 低レベルで既存の標準がないものを標準化しようとしない
+- この PEP を使用してメタデータが指定される場合、それは正規のものと見なされる
 
 
-Details
--------
+仕様
+===============================================================================
 
-Table name
-''''''''''
+プロジェクトメタデータを指定する場合、ツールはこの PEP で指定されたメタデータに従い、尊重しなければなりません。メタデータが正しく指定されていない場合、ツールはエラーを発生させてユーザーにその間違いを通知しなければなりません。
 
-Tools MUST specify fields defined by this PEP in a table named
-``[project]``. No tools may add fields to this table which are not
-defined by this PEP or subsequent PEPs. For tools wishing to store
-their own settings in ``pyproject.toml``, they may use the ``[tool]``
-table as defined in :pep:`518`. The lack of a ``[project]`` table
-implicitly means the build back-end will dynamically provide all
-fields.
+この PEP を使用して指定されたデータは正規のものと見なされます。ツールは静的に指定されたデータを削除、追加、変更することはできません。フィールドが ``dynamic`` としてマークされている場合にのみ、ツールは「新しい」値を提供することができます。
+
+
+詳細
+-------------------------------------------------------------------------------
+
+テーブル名
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+ツールは、この PEP で定義されたフィールドを ``[project]`` という名前のテーブルに指定しなければなりません。このテーブルにこの PEP または後続の PEP で定義されていないフィールドを追加することはできません。ツールが ``pyproject.toml`` に独自の設定を保存したい場合、:pep:`518` で定義されているように ``[tool]`` テーブルを使用することができます。``[project]`` テーブルが存在しない場合、ビルドバックエンドはすべてのフィールドを動的に提供することを暗黙的に意味します。
 
 ``name``
-''''''''
-- Format: string
-- `Core metadata`_: ``Name``
-  (`link <https://packaging.python.org/specifications/core-metadata/#name>`__)
-- Synonyms
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+- フォーマット: 文字列
+- `コアメタデータ`_: ``Name``
+  (`リンク <https://packaging.python.org/specifications/core-metadata/#name>`__)
+- 同義語
 
   - Flit_: ``module``/``dist-name``
-    (`link <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
+    (`リンク <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
   - Poetry_: ``name``
-    (`link <https://python-poetry.org/docs/pyproject/#name>`__)
+    (`リンク <https://python-poetry.org/docs/pyproject/#name>`__)
   - Setuptools_: ``name``
-    (`link <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
+    (`リンク <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
 
-The name of the project.
+プロジェクトの名前。
 
-Tools MUST require users to statically define this field.
+ツールはユーザーにこのフィールドを静的に定義することを要求しなければなりません。
 
-Tools SHOULD normalize this name, as specified by :pep:`503`, as soon
-as it is read for internal consistency.
+ツールは、内部の一貫性のために、この名前を読み取った時点で :pep:`503` で指定されたように正規化するべきです。
 
 ``version``
-'''''''''''
-- Format: string
-- `Core metadata`_: ``Version``
-  (`link <https://packaging.python.org/specifications/core-metadata/#version>`__)
-- Synonyms
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+- フォーマット: 文字列
+- `コアメタデータ`_: ``Version``
+  (`リンク <https://packaging.python.org/specifications/core-metadata/#version>`__)
+- 同義語
 
-  - Flit_: N/A (read from a ``__version__`` attribute)
-    (`link <https://flit.readthedocs.io/en/latest/index.html#usage>`__)
+  - Flit_: N/A (``__version__`` 属性から読み取る)
+    (`リンク <https://flit.readthedocs.io/en/latest/index.html#usage>`__)
   - Poetry_: ``version``
-    (`link <https://python-poetry.org/docs/pyproject/#version>`__)
+    (`リンク <https://python-poetry.org/docs/pyproject/#version>`__)
   - Setuptools_: ``version``
-    (`link <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
+    (`リンク <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
 
-The version of the project as supported by :pep:`440`.
+:pep:`440` でサポートされているプロジェクトのバージョン。
 
-Users SHOULD prefer to specify already-normalized versions.
+ユーザーはすでに正規化されたバージョンを指定することを推奨します。
 
 ``description``
-'''''''''''''''
-- Format: string
-- `Core metadata`_: ``Summary``
-  (`link <https://packaging.python.org/specifications/core-metadata/#summary>`__)
-- Synonyms
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+- フォーマット: 文字列
+- `コアメタデータ`_: ``Summary``
+  (`リンク <https://packaging.python.org/specifications/core-metadata/#summary>`__)
+- 同義語
 
   - Flit_: N/A
   - Poetry_: ``description``
-    (`link <https://python-poetry.org/docs/pyproject/#description>`__)
+    (`リンク <https://python-poetry.org/docs/pyproject/#description>`__)
   - Setuptools_: ``description``
-    (`link <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
+    (`リンク <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
 
-The summary description of the project.
+プロジェクトの概要説明。
 
 ``readme``
-''''''''''
-- Format: String or table
-- `Core metadata`_: ``Description``
-  (`link <https://packaging.python.org/specifications/core-metadata/#description>`__)
-- Synonyms
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+- フォーマット: 文字列またはテーブル
+- `コアメタデータ`_: ``Description``
+  (`リンク <https://packaging.python.org/specifications/core-metadata/#description>`__)
+- 同義語
 
   - Flit_: ``description-file``
-    (`link <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
+    (`リンク <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
   - Poetry_: ``readme``
-    (`link <https://python-poetry.org/docs/pyproject/#readme>`__)
+    (`リンク <https://python-poetry.org/docs/pyproject/#readme>`__)
   - Setuptools_: ``long_description``
-    (`link <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
+    (`リンク <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
 
-The full description of the project (i.e. the README).
+プロジェクトの完全な説明（つまり README）。
 
-The field accepts either a string or a table. If it is a string then
-it is the relative path to a text file containing the full
-description. Tools MUST assume the file's encoding is UTF-8. If the
-file path ends in a case-insensitive ``.md`` suffix, then tools MUST
-assume the content-type is ``text/markdown``. If the file path ends in
-a case-insensitive ``.rst``, then tools MUST assume the content-type
-is ``text/x-rst``. If a tool recognizes more extensions than this PEP,
-they MAY infer the content-type for the user without specifying this
-field as ``dynamic``. For all unrecognized suffixes when a
-content-type is not provided, tools MUST raise an error.
+このフィールドは文字列またはテーブルを受け入れます。文字列の場合、それは完全な説明を含むテキストファイルへの相対パスです。ツールはファイルのエンコーディングが UTF-8 であると仮定しなければなりません。ファイルパスが大文字小文字を区別しない ``.md`` サフィックスで終わる場合、ツールはコンテンツタイプが ``text/markdown`` であると仮定しなければなりません。ファイルパスが大文字小文字を区別しない ``.rst`` で終わる場合、ツールはコンテンツタイプが ``text/x-rst`` であると仮定しなければなりません。ツールがこの PEP で認識されていない拡張子を認識する場合、ユーザーのためにコンテンツタイプを推測することができますが、このフィールドを ``dynamic`` として指定する必要はありません。コンテンツタイプが提供されていない場合、ツールはエラーを発生させなければなりません。
 
-The ``readme`` field may also take a table. The ``file`` key has a
-string value representing a relative path to a file containing the
-full description. The ``text`` key has a string value which is the
-full description. These keys are mutually-exclusive, thus tools MUST
-raise an error if the metadata specifies both keys.
+``readme`` フィールドはテーブルも受け入れます。``file`` キーは完全な説明を含むファイルへの相対パスを表す文字列値を持ちます。``text`` キーは完全な説明である文字列値を持ちます。これらのキーは相互排他的であるため、メタデータが両方のキーを指定している場合、ツールはエラーを発生させなければなりません。
 
-A table specified in the ``readme`` field also has a ``content-type``
-field which takes a string specifying the content-type of the full
-description. A tool MUST raise an error if the metadata does not
-specify this field in the table. If the metadata does not specify the
-``charset`` parameter, then it is assumed to be UTF-8. Tools MAY
-support other encodings if they choose to. Tools MAY support
-alternative content-types which they can transform to a content-type
-as supported by the `core metadata`_. Otherwise tools MUST raise an
-error for unsupported content-types.
+``readme`` フィールドに指定されたテーブルには、完全な説明のコンテンツタイプを指定する文字列値を持つ ``content-type`` フィールドもあります。メタデータがテーブル内でこのフィールドを指定していない場合、ツールはエラーを発生させなければなりません。メタデータが ``charset`` パラメータを指定していない場合、それは UTF-8 と見なされます。ツールは他のエンコーディングをサポートすることができます。ツールは、`コアメタデータ`_ でサポートされているコンテンツタイプに変換できる他のコンテンツタイプをサポートすることができます。それ以外の場合、ツールはサポートされていないコンテンツタイプに対してエラーを発生させなければなりません。
 
 ``requires-python``
-'''''''''''''''''''
-- Format: string
-- `Core metadata`_: ``Requires-Python``
-  (`link <https://packaging.python.org/specifications/core-metadata/#summary>`__)
-- Synonyms
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+- フォーマット: 文字列
+- `コアメタデータ`_: ``Requires-Python``
+  (`リンク <https://packaging.python.org/specifications/core-metadata/#summary>`__)
+- 同義語
 
   - Flit_: ``requires-python``
-    (`link <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
-  - Poetry_: As a ``python`` dependency in the
-    ``[tool.poetry.dependencies]`` table
-    (`link <https://python-poetry.org/docs/pyproject/#dependencies-and-dev-dependencies>`__)
+    (`リンク <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
+  - Poetry_: ``[tool.poetry.dependencies]`` テーブルの ``python`` 依存関係として
+    (`リンク <https://python-poetry.org/docs/pyproject/#dependencies-and-dev-dependencies>`__)
   - Setuptools_: ``python_requires``
-    (`link <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
+    (`リンク <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
 
-The Python version requirements of the project.
+プロジェクトの Python バージョン要件。
 
 ``license``
-'''''''''''
-- Format: Table
-- `Core metadata`_: ``License``
-  (`link <https://packaging.python.org/specifications/core-metadata/#license>`__)
-- Synonyms
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+- フォーマット: テーブル
+- `コアメタデータ`_: ``License``
+  (`リンク <https://packaging.python.org/specifications/core-metadata/#license>`__)
+- 同義語
 
   - Flit_: ``license``
-    (`link <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
+    (`リンク <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
   - Poetry_: ``license``
-    (`link <https://python-poetry.org/docs/pyproject/#license>`__)
+    (`リンク <https://python-poetry.org/docs/pyproject/#license>`__)
   - Setuptools_: ``license``, ``license_file``, ``license_files``
-    (`link <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
+    (`リンク <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
 
-The table may have one of two keys. The ``file`` key has a string
-value that is a relative file path to the file which contains the
-license for the project. Tools MUST assume the file's encoding is
-UTF-8. The ``text`` key has a string value which is the license of the
-project whose meaning is that of the ``License`` field from the
-`core metadata`_. These keys are mutually exclusive, so a tool MUST
-raise an error if the metadata specifies both keys.
+このテーブルには2つのキーのいずれかが含まれます。``file`` キーはプロジェクトのライセンスを含むファイルへの相対パスを持つ文字列値です。ツールはファイルのエンコーディングが UTF-8 であると仮定しなければなりません。``text`` キーはプロジェクトのライセンスである文字列値を持ち、その意味は `コアメタデータ`_ の ``License`` フィールドと同じです。これらのキーは相互排他的であるため、メタデータが両方のキーを指定している場合、ツールはエラーを発生させなければなりません。
 
-A practical string value for the ``license`` key has been purposefully
-left out to allow for a future PEP to specify support for SPDX_
-expressions (the same logic applies to any sort of "type" field
-specifying what license the ``file`` or ``text`` represents).
+``license`` キーの実用的な文字列値は、将来の PEP が SPDX_ 式のサポートを指定するために意図的に省略されています（同じ論理が ``file`` または ``text`` が表すライセンスを指定するための「type」フィールドにも適用されます）。
 
 ``authors``/``maintainers``
-'''''''''''''''''''''''''''
-- Format: Array of inline tables with string keys and values
-- `Core metadata`_: ``Author``/``Author-email``/``Maintainer``/``Maintainer-email``
-  (`link <https://packaging.python.org/specifications/core-metadata/#author>`__)
-- Synonyms
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+- フォーマット: 文字列キーと値を持つインラインテーブルの配列
+- `コアメタデータ`_: ``Author``/``Author-email``/``Maintainer``/``Maintainer-email``
+  (`リンク <https://packaging.python.org/specifications/core-metadata/#author>`__)
+- 同義語
 
   - Flit_: ``author``/``author-email``/``maintainer``/``maintainer-email``
-    (`link <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
+    (`リンク <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
   - Poetry_: ``authors``/``maintainers``
-    (`link <https://python-poetry.org/docs/pyproject/#authors>`__)
+    (`リンク <https://python-poetry.org/docs/pyproject/#authors>`__)
   - Setuptools_: ``author``/``author_email``/``maintainer``/``maintainer_email``
-    (`link <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
+    (`リンク <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
 
-The people or organizations considered to be the "authors" of the
-project. The exact meaning is open to interpretation — it may list the
-original or primary authors, current maintainers, or owners of the
-package.
+プロジェクトの「著者」と見なされる人または組織。正確な意味は解釈に委ねられます。元の著者、主要な著者、現在のメンテナー、またはパッケージの所有者をリストすることができます。
 
-The "maintainers" field is similar to "authors" in that its exact
-meaning is open to interpretation.
+``maintainers`` フィールドは ``authors`` と同様に、その正確な意味は解釈に委ねられます。
 
-These fields accept an array of tables with 2 keys: ``name`` and
-``email``. Both values must be strings. The ``name`` value MUST be a
-valid email name (i.e. whatever can be put as a name, before an email,
-in :rfc:`822`) and not contain commas. The ``email`` value MUST be a
-valid email address. Both keys are optional.
+これらのフィールドは、2つのキー ``name`` と ``email`` を持つテーブルの配列を受け入れます。両方の値は文字列でなければなりません。``name`` 値は有効なメール名でなければならず（つまり、:rfc:`822` でメールの前に置くことができるもの）、コンマを含んではなりません。``email`` 値は有効なメールアドレスでなければなりません。両方のキーはオプションです。
 
-Using the data to fill in `core metadata`_ is as follows:
+`コアメタデータ`_ を埋めるためのデータの使用方法は次のとおりです：
 
-1. If only ``name`` is provided, the value goes in
-   ``Author``/``Maintainer`` as appropriate.
-2. If only ``email`` is provided, the value goes in
-   ``Author-email``/``Maintainer-email`` as appropriate.
-3. If both ``email`` and ``name`` are provided, the value goes in
-   ``Author-email``/``Maintainer-email`` as appropriate, with the
-   format ``{name} <{email}>`` (with appropriate quoting, e.g. using
-   ``email.headerregistry.Address``).
-4. Multiple values should be separated by commas.
+1. ``name`` のみが提供されている場合、その値は適切な ``Author``/``Maintainer`` に入ります。
+2. ``email`` のみが提供されている場合、その値は適切な ``Author-email``/``Maintainer-email`` に入ります。
+3. ``email`` と ``name`` の両方が提供されている場合、その値は適切な ``Author-email``/``Maintainer-email`` に入ります。形式は ``{name} <{email}>`` です（適切な引用を使用します。例：``email.headerregistry.Address`` を使用）。
+4. 複数の値はコンマで区切る必要があります。
 
 ``keywords``
-''''''''''''
-- Format: array of strings
-- `Core metadata`_: ``Keywords``
-  (`link <https://packaging.python.org/specifications/core-metadata/#keywords>`__)
-- Synonyms
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+- フォーマット: 文字列の配列
+- `コアメタデータ`_: ``Keywords``
+  (`リンク <https://packaging.python.org/specifications/core-metadata/#keywords>`__)
+- 同義語
 
   - Flit_: ``keywords``
-    (`link <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
+    (`リンク <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
   - Poetry_: ``keywords``
-    (`link <https://python-poetry.org/docs/pyproject/#keywords>`_)
+    (`リンク <https://python-poetry.org/docs/pyproject/#keywords>`_)
   - Setuptools_: ``keywords``
-    (`link <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
+    (`リンク <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
 
-The keywords for the project.
+プロジェクトのキーワード。
 
 ``classifiers``
-'''''''''''''''
-- Format: array of strings
-- `Core metadata`_: ``Classifier``
-  (`link <https://packaging.python.org/specifications/core-metadata/#classifier-multiple-use>`__)
-- Synonyms
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+- フォーマット: 文字列の配列
+- `コアメタデータ`_: ``Classifier``
+  (`リンク <https://packaging.python.org/specifications/core-metadata/#classifier-multiple-use>`__)
+- 同義語
 
   - Flit_: ``classifiers``
-    (`link <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
+    (`リンク <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
   - Poetry_: ``classifiers``
-    (`link <https://python-poetry.org/docs/pyproject/#classifiers>`__)
+    (`リンク <https://python-poetry.org/docs/pyproject/#classifiers>`__)
   - Setuptools_: ``classifiers``
-    (`link <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
+    (`リンク <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
 
-`Trove classifiers`_ which apply to the project.
+プロジェクトに適用される `Trove classifiers`_ 。
 
 ``urls``
-''''''''
-- Format: Table, with keys and values of strings
-- `Core metadata`_: ``Project-URL``
-  (`link <https://packaging.python.org/specifications/core-metadata/#project-url-multiple-use>`__)
-- Synonyms
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+- フォーマット: テーブル、キーと値は文字列
+- `コアメタデータ`_: ``Project-URL``
+  (`リンク <https://packaging.python.org/specifications/core-metadata/#project-url-multiple-use>`__)
+- 同義語
 
-  - Flit_: ``[tool.flit.metadata.urls]`` table
-    (`link <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
-  - Poetry_: ``[tool.poetry.urls]`` table
-    (`link <https://python-poetry.org/docs/pyproject/#urls>`__)
+  - Flit_: ``[tool.flit.metadata.urls]`` テーブル
+    (`リンク <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
+  - Poetry_: ``[tool.poetry.urls]`` テーブル
+    (`リンク <https://python-poetry.org/docs/pyproject/#urls>`__)
   - Setuptools_: ``project_urls``
-    (`link <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
+    (`リンク <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
 
-A table of URLs where the key is the URL label and the value is the
-URL itself.
+キーが URL ラベルで、値が URL 自体であるテーブル。
 
-Entry points
-''''''''''''
-- Format: Table (``[project.scripts]``, ``[project.gui-scripts]``, and
-  ``[project.entry-points]``)
-- `Core metadata`_: N/A;
-  `Entry points specification`_
-- Synonyms
+エントリポイント
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+- フォーマット: テーブル（``[project.scripts]``、``[project.gui-scripts]``、および ``[project.entry-points]``）
+- `コアメタデータ`_: N/A;
+  `エントリポイント仕様`_
+- 同義語
 
-  - Flit_: ``[tool.flit.scripts]`` table for console scripts,
-    ``[tool.flit.entrypoints]`` for the rest
-    (`link <https://flit.readthedocs.io/en/latest/pyproject_toml.html#scripts-section>`__)
-  - Poetry_: ``[tool.poetry.scripts]`` table for console scripts
-    (`link <https://python-poetry.org/docs/pyproject/#scripts>`__)
+  - Flit_: コンソールスクリプト用の ``[tool.flit.scripts]`` テーブル、その他のエントリポイント用の ``[tool.flit.entrypoints]``
+    (`リンク <https://flit.readthedocs.io/en/latest/pyproject_toml.html#scripts-section>`__)
+  - Poetry_: コンソールスクリプト用の ``[tool.poetry.scripts]`` テーブル
+    (`リンク <https://python-poetry.org/docs/pyproject/#scripts>`__)
   - Setuptools_: ``entry_points``
-    (`link <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
+    (`リンク <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
 
-There are three tables related to entry points. The
-``[project.scripts]`` table corresponds to the ``console_scripts``
-group in the `entry points specification`_. The key of the table is the name of the
-entry point and the value is the object reference.
+エントリポイントに関連する3つのテーブルがあります。``[project.scripts]`` テーブルは、`エントリポイント仕様`_ の ``console_scripts`` グループに対応します。テーブルのキーはエントリポイントの名前で、値はオブジェクト参照です。
 
-The ``[project.gui-scripts]`` table corresponds to the ``gui_scripts``
-group in the `entry points specification`_. Its format is the same as
-``[project.scripts]``.
+``[project.gui-scripts]`` テーブルは、`エントリポイント仕様`_ の ``gui_scripts`` グループに対応します。その形式は ``[project.scripts]`` と同じです。
 
-The ``[project.entry-points]`` table is a collection of tables. Each
-sub-table's name is an entry point group. The key and value semantics
-are the same as ``[project.scripts]``. Users MUST NOT create
-nested sub-tables but instead keep the entry point groups to only one
-level deep.
+``[project.entry-points]`` テーブルはテーブルのコレクションです。各サブテーブルの名前はエントリポイントグループです。キーと値のセマンティクスは ``[project.scripts]`` と同じです。ユーザーはネストされたサブテーブルを作成してはならず、エントリポイントグループを1レベルのみに保つ必要があります。
 
-Build back-ends MUST raise an error if the metadata defines a
-``[project.entry-points.console_scripts]`` or
-``[project.entry-points.gui_scripts]`` table, as they would
-be ambiguous in the face of ``[project.scripts]`` and
-``[project.gui-scripts]``, respectively.
+ビルドバックエンドは、メタデータが ``[project.entry-points.console_scripts]`` または ``[project.entry-points.gui_scripts]`` テーブルを定義している場合、エラーを発生させなければなりません。これは、``[project.scripts]`` および ``[project.gui-scripts]`` と矛盾するためです。
 
 ``dependencies``/``optional-dependencies``
-''''''''''''''''''''''''''''''''''''''''''
-- Format: Array of :pep:`508` strings (``dependencies``) and a table
-  with values of arrays of :pep:`508` strings
-  (``optional-dependencies``)
-- `Core metadata`_: ``Requires-Dist`` and ``Provides-Extra``
-  (`link <https://packaging.python.org/specifications/core-metadata/#requires-dist-multiple-use>`__,
-  `link <https://packaging.python.org/specifications/core-metadata/#provides-extra-multiple-use>`__)
-- Synonyms
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+- フォーマット: :pep:`508` 文字列の配列（``dependencies``）および :pep:`508` 文字列の配列を値とするテーブル（``optional-dependencies``）
+- `コアメタデータ`_: ``Requires-Dist`` および ``Provides-Extra``
+  (`リンク <https://packaging.python.org/specifications/core-metadata/#requires-dist-multiple-use>`__,
+  `リンク <https://packaging.python.org/specifications/core-metadata/#provides-extra-multiple-use>`__)
+- 同義語
 
-  - Flit_: ``requires`` for required dependencies, ``requires-extra``
-    for optional dependencies
-    (`link <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
-  - Poetry_: ``[tool.poetry.dependencies]`` for dependencies (both
-    required and for development),
-    ``[tool.poetry.extras]`` for optional dependencies
-    (`link <https://python-poetry.org/docs/pyproject/#dependencies-and-dev-dependencies>`__)
-  - Setuptools_: ``install_requires`` for required dependencies,
-    ``extras_require`` for optional dependencies
-    (`link <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
+  - Flit_: 必須依存関係用の ``requires``、オプション依存関係用の ``requires-extra``
+    (`リンク <https://flit.readthedocs.io/en/latest/pyproject_toml.html#metadata-section>`__)
+  - Poetry_: 依存関係（必須および開発用）のための ``[tool.poetry.dependencies]``、オプション依存関係のための ``[tool.poetry.extras]``
+    (`リンク <https://python-poetry.org/docs/pyproject/#dependencies-and-dev-dependencies>`__)
+  - Setuptools_: 必須依存関係用の ``install_requires``、オプション依存関係用の ``extras_require``
+    (`リンク <https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata>`__)
 
-The (optional) dependencies of the project.
+プロジェクトの（オプションの）依存関係。
 
-For ``dependencies``, it is a key whose value is an array of strings.
-Each string represents a dependency of the project and MUST be
-formatted as a valid :pep:`508` string. Each string maps directly to
-a ``Requires-Dist`` entry in the `core metadata`_.
+``dependencies`` の場合、それは文字列の配列を値とするキーです。各文字列はプロジェクトの依存関係を表し、有効な :pep:`508` 文字列としてフォーマットされていなければなりません。各文字列は `コアメタデータ`_ の ``Requires-Dist`` エントリに直接マッピングされます。
 
-For ``optional-dependencies``, it is a table where each key specifies
-an extra and whose value is an array of strings. The strings of the
-arrays must be valid :pep:`508` strings. The keys MUST be valid values
-for the ``Provides-Extra`` `core metadata`_. Each value in the array
-thus becomes a corresponding ``Requires-Dist`` entry for the matching
-``Provides-Extra`` metadata.
+``optional-dependencies`` の場合、それは各キーがエクストラを指定し、値が文字列の配列であるテーブルです。配列の文字列は有効な :pep:`508` 文字列でなければなりません。キーは ``Provides-Extra`` `コアメタデータ`_ の有効な値でなければなりません。したがって、配列内の各値は、対応する ``Provides-Extra`` メタデータの対応する ``Requires-Dist`` エントリになります。
 
 ``dynamic``
-'''''''''''
-- Format: Array of strings
-- `Core metadata`_: N/A
-- No synonyms
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+- フォーマット: 文字列の配列
+- `コアメタデータ`_: N/A
+- 同義語なし
 
-Specifies which fields listed by this PEP were intentionally
-unspecified so another tool can/will provide such metadata
-dynamically. This clearly delineates which metadata is purposefully
-unspecified and expected to stay unspecified compared to being
-provided via tooling later on.
+この PEP でリストされているフィールドのうち、他のツールが動的にそのメタデータを提供するために意図的に指定されていないフィールドを指定します。これにより、メタデータが意図的に指定されていないことと、後でツールを介して提供される予定であることが明確に区別されます。
 
-- A build back-end MUST honour statically-specified metadata (which
-  means the metadata did not list the field in ``dynamic``).
-- A build back-end MUST raise an error if the metadata specifies the
-  ``name`` in ``dynamic``.
-- If the `core metadata`_ specification lists a field as "Required",
-  then the metadata MUST specify the field statically or list it in
-  ``dynamic`` (build back-ends MUST raise an error otherwise, i.e. it
-  should not be possible for a required field to not be listed somehow
-  in the ``[project]`` table).
-- If the `core metadata`_ specification lists a field as "Optional",
-  the metadata MAY list it in ``dynamic`` if the expectation is a
-  build back-end will provide the data for the field later.
-- Build back-ends MUST raise an error if the metadata specifies a
-  field statically as well as being listed in ``dynamic``.
-- If the metadata does not list a field in ``dynamic``, then a build
-  back-end CANNOT fill in the requisite metadata on behalf of the user
-  (i.e. ``dynamic`` is the only way to allow a tool to fill in
-  metadata and the user must opt into the filling in).
-- Build back-ends MUST raise an error if the metadata specifies a
-  field in dynamic but the build back-end was unable to provide the
-  data for it.
+- ビルドバックエンドは静的に指定されたメタデータを尊重しなければなりません（つまり、メタデータが ``dynamic`` にリストされていないことを意味します）。
+- ビルドバックエンドは、メタデータが ``dynamic`` に ``name`` を指定している場合、エラーを発生させなければなりません。
+- `コアメタデータ`_ 仕様がフィールドを「必須」としてリストしている場合、メタデータはフィールドを静的に指定するか、``dynamic`` にリストしなければなりません（ビルドバックエンドはそれ以外の場合にエラーを発生させなければなりません。つまり、必須フィールドが ``[project]`` テーブルに何らかの形でリストされていないことはできません）。
+- `コアメタデータ`_ 仕様がフィールドを「オプション」としてリストしている場合、ビルドバックエンドが後でフィールドのデータを提供することを期待している場合、メタデータはそれを ``dynamic`` にリストすることができます。
+- メタデータがフィールドを静的に指定し、かつ ``dynamic`` にリストしている場合、ビルドバックエンドはエラーを発生させなければなりません。
+- メタデータがフィールドを ``dynamic`` にリストしていない場合、ビルドバックエンドはユーザーに代わって必要なメタデータを埋めることはできません（つまり、``dynamic`` はツールがメタデータを埋めることを許可する唯一の方法であり、ユーザーは埋めることにオプトインする必要があります）。
+- メタデータがフィールドを動的に指定しているが、ビルドバックエンドがそのデータを提供できなかった場合、ビルドバックエンドはエラーを発生させなければなりません。
 
-Example
--------
+例
+-------------------------------------------------------------------------------
 ::
 
   [project]
@@ -508,129 +373,85 @@ Example
   tomatoes = "spam:main_tomatoes"
 
 
-Backwards Compatibility
-=======================
+後方互換性
+===============================================================================
 
-As this provides a new way to specify a project's `core metadata`_ and
-is using a new table name which falls under the reserved namespace as
-outlined in :pep:`518`, there are no backwards-compatibility concerns.
+これはプロジェクトの `コアメタデータ`_ を指定する新しい方法を提供し、:pep:`518` で概説されている予約された名前空間の新しいテーブル名を使用しているため、後方互換性の懸念はありません。
 
 
-Security Implications
-=====================
+セキュリティの影響
+===============================================================================
 
-There are no direct security concerns as this PEP covers how to
-statically define project metadata. Any security issues would stem
-from how tools consume the metadata and choose to act upon it.
+この PEP はプロジェクトメタデータを静的に定義する方法をカバーしているため、直接的なセキュリティの懸念はありません。セキュリティの問題は、ツールがメタデータを消費し、それに基づいて行動する方法に起因する可能性があります。
 
 
-Reference Implementation
-========================
+参考実装
+===============================================================================
 
-There are currently no proofs-of-concept from any build back-end
-implementing this PEP.
+この PEP を実装しているビルドバックエンドの概念実証は現在ありません。
 
 
-Rejected Ideas
-==============
+却下されたアイデア
+===============================================================================
 
-Other table names
------------------
+他のテーブル名
+-------------------------------------------------------------------------------
 
-Anything under ``[build-system]``
-'''''''''''''''''''''''''''''''''
-There was worry that using this table name would exacerbate confusion
-between build metadata and project metadata, e.g. by using
-``[build-system.metadata]`` as a table.
+``[build-system]`` の下にあるもの
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+このテーブル名を使用すると、ビルドメタデータとプロジェクトメタデータの混乱が悪化する可能性があるという懸念がありました。たとえば、``[build-system.metadata]`` というテーブルを使用する場合です。
 
 ``[package]``
-'''''''''''''
-Garnered no strong support.
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+強い支持は得られませんでした。
 
 ``[metadata]``
-''''''''''''''
-The strongest contender after ``[project]``, but in the end it was
-agreed that ``[project]`` read better for certain sub-tables, e.g.
-``[project.urls]``.
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+``[project]`` の次に強い候補でしたが、最終的には ``[project]`` が一部のサブテーブルに対してより読みやすいと合意されました。たとえば、``[project.urls]`` です。
 
-Support for a metadata provider
--------------------------------
-Initially there was a proposal to add a middle layer between the
-static metadata specified by this PEP and
-``prepare_metadata_for_build_wheel()`` as specified by :pep:`517`. The
-idea was that if a project wanted to insert itself between a build
-back-end and the metadata there would be a hook to do so.
+メタデータプロバイダーのサポート
+-------------------------------------------------------------------------------
+最初は、この PEP で指定された静的メタデータと :pep:`517` で指定された ``prepare_metadata_for_build_wheel()`` の間に中間層を追加する提案がありました。アイデアは、プロジェクトがビルドバックエンドとメタデータの間に挿入したい場合、そのためのフックを提供することでした。
 
-In the end the authors considered this idea unnecessarily complicated
-and would move the PEP away from its design goal to push people to
-define core metadata statically as much as possible.
+最終的に、著者はこのアイデアが不必要に複雑であり、コアメタデータをできるだけ静的に定義するように人々を促すという設計目標から逸脱することを考慮しました。
 
-Require a normalized project name
----------------------------------
-While it would make things easier for tools to only work with the
-normalized name as specified in :pep:`503`, the idea was ultimately
-rejected as it would hurt projects transitioning to using this PEP.
+正規化されたプロジェクト名を要求する
+-------------------------------------------------------------------------------
+ツールが :pep:`503` で指定された正規化された名前のみを使用する方が簡単であると考えられましたが、このアイデアは最終的にこの PEP を使用するプロジェクトの移行を妨げるため却下されました。
 
-Specify files to include when building
---------------------------------------
-The authors decided fairly quickly during design discussions that
-this PEP should focus exclusively on project metadata and not build
-metadata. As such, specifying what files should end up in a source
-distribution or wheel file is out of scope for this PEP.
+ビルド時に含めるファイルを指定する
+-------------------------------------------------------------------------------
+著者は設計ディスカッションの中で、この PEP はプロジェクトメタデータに専念し、ビルドメタデータには専念しないことを早期に決定しました。そのため、ソースディストリビューションやホイールファイルに含めるファイルを指定することは、この PEP の範囲外です。
 
-Name the ``[project.urls]`` table ``[project.project-urls]``
-------------------------------------------------------------
-This suggestion came thanks to the corresponding `core metadata`_
-being ``Project-Url``. But once the overall table name of ``[project]``
-was chosen, the redundant use of the word "project" suggested the
-current, shorter name was a better fit.
+``[project.urls]`` テーブルを ``[project.project-urls]`` と命名する
+-------------------------------------------------------------------------------
+この提案は、対応する `コアメタデータ`_ が ``Project-Url`` であることに基づいています。しかし、``[project]`` の全体的なテーブル名が選ばれた後、「プロジェクト」という単語の冗長な使用が現在の短い名前の方が適していることを示唆しました。
 
-Have a separate ``url``/``home-page`` field
--------------------------------------------
-While the `core metadata`_ supports it, having a single field for a
-project's URL while also supporting a full table seemed redundant and
-confusing.
+別の ``url``/``home-page`` フィールドを持つ
+-------------------------------------------------------------------------------
+`コアメタデータ`_ がサポートしている一方で、プロジェクトの URL のための単一のフィールドを持ちながら、完全なテーブルをサポートすることは冗長であり、混乱を招くと考えられました。
 
-Recommend that tools put development-related dependencies into a "dev" extra
-----------------------------------------------------------------------------
-As various tools have grown the concept of required dependencies
-versus development dependencies, the idea of suggesting to tools that
-they put such development tool into a "dev" grouping came up. In the
-end, though, the authors deemed it out-of-scope for this specification
-to suggest such a workflow.
+ツールが開発関連の依存関係を「dev」エクストラに配置することを推奨する
+-------------------------------------------------------------------------------
+さまざまなツールが必須依存関係と開発依存関係の概念を成長させる中で、ツールがそのような開発ツールを「dev」グループに配置することを提案するアイデアが浮上しました。しかし、最終的には、著者はこの仕様がそのようなワークフローを提案することは範囲外であると判断しました。
 
-Have the ``dynamic`` field only require specifying missing required fields
---------------------------------------------------------------------------
-The authors considered the idea that the ``dynamic`` field would only
-require the listing of missing required fields and make listing
-optional fields optional. In the end, though, this went against the
-design goal of promoting specifying as much information statically as
-possible.
+``dynamic`` フィールドが欠落している必須フィールドのみを指定することを要求する
+-------------------------------------------------------------------------------
+著者は、``dynamic`` フィールドが欠落している必須フィールドのみをリストし、オプションフィールドのリストをオプションにするアイデアを検討しました。しかし、最終的には、できるだけ多くの情報を静的に指定することを促進するという設計目標に反するため、このアイデアは却下されました。
 
-Different structures for the ``readme`` field
----------------------------------------------
-The ``readme`` field had a proposed ``readme_content_type`` field, but
-the authors considered the string/table hybrid more practical for the
-common case while still accommodating the more complex case. Same goes
-for using ``long_description`` and a corresponding
-``long_description_content_type`` field.
+``readme`` フィールドの異なる構造
+-------------------------------------------------------------------------------
+``readme`` フィールドには ``readme_content_type`` フィールドが提案されましたが、著者は文字列/テーブルのハイブリッド形式が一般的なケースに対してより実用的であり、より複雑なケースにも対応できると考えました。同様に、``long_description`` と対応する ``long_description_content_type`` フィールドを使用することも提案されました。
 
-The ``file`` key in the table format was originally proposed as
-``path``, but ``file`` corresponds to setuptools' ``file`` key and
-there is no strong reason otherwise to choose one over the other.
+テーブル形式の ``file`` キーは最初 ``path`` として提案されましたが、``file`` は setuptools の ``file`` キーに対応しており、他に強い理由がない限り、どちらを選ぶかは重要ではありません。
 
-Allowing the ``readme`` field to imply ``text/plain``
------------------------------------------------------
-The authors considered allowing for unspecified content-types which
-would default to ``text/plain``, but decided that it would be best to
-be explicit in this case to prevent accidental incorrect renderings on
-PyPI and to force users to be clear in their intent.
+``readme`` フィールドが ``text/plain`` を暗示することを許可する
+-------------------------------------------------------------------------------
+著者は、指定されていないコンテンツタイプを許可し、それを ``text/plain`` と見なすことを検討しましたが、PyPI での誤ったレンダリングを防ぐために、この場合は明示的にすることが最善であると判断しました。
 
-Other names for ``dependencies``/``optional-dependencies``
-----------------------------------------------------------
-The authors originally proposed ``requires``/``extra-requires`` as
-names, but decided to go with the current names after a survey of
-other packaging ecosystems showed Python was an outlier:
+``dependencies``/``optional-dependencies`` の他の名前
+-------------------------------------------------------------------------------
+著者は最初に ``requires``/``extra-requires`` という名前を提案しましたが、他のパッケージングエコシステムの調査の結果、Python が例外であることが示されたため、現在の名前を選択しました：
 
 1. `npm <https://docs.npmjs.com/files/package.json#optionaldependencies>`__
 2. `Rust <https://doc.rust-lang.org/cargo/guide/dependencies.html>`__
@@ -638,92 +459,55 @@ other packaging ecosystems showed Python was an outlier:
 4. `Swift <https://swift.org/package-manager/>`__
 5. `Ruby <https://guides.rubygems.org/specification-reference/#add_runtime_dependency>`__
 
-Normalizing on the current names helps minimize confusion for people coming from
-other ecosystems without using terminology that is necessarily foreign to new
-programmers. It also prevents potential confusion with ``requires`` in the
-``[build-system]`` table as specified in :pep:`518`.
+現在の名前に正規化することで、他のエコシステムから来る人々の混乱を最小限に抑え、新しいプログラマーにとっても馴染みのない用語を使用することを避けることができます。また、:pep:`518` で指定された ``[build-system]`` テーブルの ``requires`` と混同する可能性も防ぎます。
 
-Drop ``maintainers`` to unify with ``authors``
-----------------------------------------------
-As the difference between ``Authors`` and ``Maintainers`` fields in
-the `core metadata`_ is unspecified and ambiguous, this PEP originally
-proposed unifying them as a single ``authors`` field. Other ecosystems
-have selected "author" as the term to use, so the thinking was to
-standardize on ``Author`` in the core metadata as the place to list
-people maintaining a project.
+``authors`` と ``maintainers`` を統一して ``authors`` にする
+-------------------------------------------------------------------------------
+`コアメタデータ`_ の ``Authors`` と ``Maintainers`` フィールドの違いは指定されておらず曖昧であるため、この PEP は最初にそれらを単一の ``authors`` フィールドとして統一することを提案しました。他のエコシステムは「author」という用語を選択しているため、`コアメタデータ`_ でプロジェクトを維持する人々をリストする場所として ``Author`` を標準化することを考えていました。
 
-In the end, though, the decision to adhere to the core metadata was
-deemed more important to help with the acceptance of this PEP,
-rather than trying to introduce a new interpretation for some of the
-core metadata.
+しかし、最終的には、この PEP の受け入れを助けるために `コアメタデータ`_ に従うことがより重要であると判断され、新しい解釈を導入しようとするのではなく、`コアメタデータ`_ に従うことが選ばれました。
 
-Support an arbitrary depth of tables for ``project.entry-points``
------------------------------------------------------------------
-There was a worry that keeping ``project.entry-points`` to a depth of 1 for sub-tables
-would cause confusion to users if they use a dotted name and are not used to table
-names using quotation marks (e.g. ``project.entry-points."spam.magical"``). But
-supporting an arbitrary depth -- e.g. ``project.entry-points.spam.magical`` -- would
-preclude any form of an exploded table format in the future. It would also complicate
-things for build back-ends as they would have to make sure to traverse the full
-table structure rather than a single level and raising errors as appropriate on
-value types.
+``project.entry-points`` のテーブルの任意の深さをサポートする
+-------------------------------------------------------------------------------
+サブテーブルの深さを1に制限することが、ユーザーがドット付きの名前を使用し、テーブル名に引用符を使用することに慣れていない場合に混乱を引き起こす可能性があるという懸念がありました（例：``project.entry-points."spam.magical"``）。しかし、任意の深さをサポートすること（例：``project.entry-points.spam.magical``）は、将来の展開されたテーブル形式のいかなる形態も排除します。また、ビルドバックエンドにとって、単一レベルではなく完全なテーブル構造をトラバースし、値の型に応じて適切にエラーを発生させる必要があるため、複雑化します。
 
-Using structured TOML dictionaries to specify dependencies
-----------------------------------------------------------
-The format for specifying the dependencies of a project was the most
-hotly contested topic in terms of data format. It led to the creation
-of both :pep:`631` and :pep:`633` which represent what is in this PEP
-and using TOML dictionaries more extensively, respectively. The
-decision on those PEPs can be found at
-https://discuss.python.org/t/how-to-specify-dependencies-pep-508-strings-or-a-table-in-toml/5243/38.
+依存関係を指定するために構造化された TOML 辞書を使用する
+-------------------------------------------------------------------------------
+プロジェクトの依存関係を指定する形式は、データ形式に関して最も議論されたトピックでした。これにより、この PEP と TOML 辞書をより広範に使用する :pep:`631` および :pep:`633` が作成されました。これらの PEP に関する決定は、https://discuss.python.org/t/how-to-specify-dependencies-pep-508-strings-or-a-table-in-toml/5243/38 で見つけることができます。
 
-The authors briefly considered supporting both formats, but decided
-that it would lead to confusion as people would need to be familiar
-with two formats instead of just one.
+著者は一時的に両方の形式をサポートすることを検討しましたが、2つの形式に精通する必要があるため、混乱を招くと判断しました。
 
-Require build back-ends to update ``pyproject.toml`` when generating an sdist
------------------------------------------------------------------------------
-When this PEP was written, sdists did not require having static,
-canonical metadata like this PEP does. The idea was then considered to
-use this PEP as a way to get such metadata into sdists. In the end,
-though, the idea of updating ``pyproject.toml`` was not generally
-liked, and so the idea was rejected in favour of separately pursuing
-standardizing metadata in sdists.
+ビルドバックエンドが sdist を生成する際に ``pyproject.toml`` を更新することを要求する
+-------------------------------------------------------------------------------------
+この PEP が書かれた時点では、sdist にはこの PEP のような静的で正規のメタデータが必要ありませんでした。そのため、この PEP を使用して sdist にそのようなメタデータを取得することが検討されました。しかし、最終的には、``pyproject.toml`` を更新するというアイデアは一般的に好まれず、sdist のメタデータを標準化することを別途追求するために却下されました。
 
-Allow tools to add/extend data
-------------------------------
-In an earlier version of this PEP, tools were allowed to extend data
-for fields. For instance, build back-ends could take the version
-number and add a local version for when they built the wheel. Tools
-could also add more trove classifiers for things like the license or
-supported Python versions.
+ツールがデータを追加/拡張することを許可する
+-------------------------------------------------------------------------------
+この PEP の初期バージョンでは、ツールがフィールドのデータを拡張することが許可されていました。たとえば、ビルドバックエンドはバージョン番号を取得し、ホイールをビルドする際にローカルバージョンを追加することができました。ツールは、ライセンスやサポートされている Python バージョンなどのために、より多くのトローブ分類子を追加することもできました。
 
-In the end, though, it was thought better to start out stricter and
-contemplate loosening how static the data could be considered based
-on real-world usage.
+しかし、最終的には、データの静的性を緩和する方法を現実の使用に基づいて検討する前に、より厳格に開始する方が良いと考えられました。
 
 
-Open Issues
-===========
-None at the moment.
+未解決の問題
+===============================================================================
+現在のところありません。
 
-Copyright
-=========
+著作権
+===============================================================================
 
-This document is placed in the public domain or under the
-CC0-1.0-Universal license, whichever is more permissive.
+このドキュメントはパブリックドメインに置かれているか、CC0-1.0-Universal ライセンスの下に置かれています。どちらがより寛容かによります。
 
 
 .. _PyPI: https://pypi.org
-.. _core metadata: https://packaging.python.org/specifications/core-metadata/
+.. _コアメタデータ: https://packaging.python.org/specifications/core-metadata/
 .. _flit: https://flit.readthedocs.io/
 .. _poetry: https://python-poetry.org/
 .. _setuptools: https://setuptools.readthedocs.io/
-.. _setuptools metadata: https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata
-.. _survey of tools: https://github.com/uranusjr/packaging-metadata-comparisons
+.. _setuptools メタデータ: https://setuptools.readthedocs.io/en/latest/setuptools.html#metadata
+.. _ツールの調査: https://github.com/uranusjr/packaging-metadata-comparisons
 .. _trove classifiers: https://pypi.org/classifiers/
 .. _SPDX: https://spdx.dev/
-.. _entry points specification: https://packaging.python.org/specifications/entry-points/
+.. _エントリポイント仕様: https://packaging.python.org/specifications/entry-points/
 
 ..
    Local Variables:

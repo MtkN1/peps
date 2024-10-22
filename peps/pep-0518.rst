@@ -1,5 +1,5 @@
 PEP: 518
-Title: Specifying Minimum Build System Requirements for Python Projects
+Title: Python プロジェクトの最小ビルドシステム要件の指定
 Author: Brett Cannon <brett@python.org>,
         Nathaniel J. Smith <njs@pobox.com>,
         Donald Stufft <donald@stufft.io>
@@ -16,192 +16,82 @@ Post-History: 10-May-2016,
 Resolution: https://mail.python.org/pipermail/distutils-sig/2016-May/028969.html
 
 
-Abstract
-========
+概要
+===============================================================================
 
-This PEP specifies how Python software packages should specify what
-build dependencies they have in order to execute their chosen build
-system. As part of this specification, a new configuration file is
-introduced for software packages to use to specify their build
-dependencies (with the expectation that the same configuration file
-will be used for future configuration details).
+この PEP は、Python ソフトウェアパッケージが選択したビルドシステムを実行するために必要なビルド依存関係を指定する方法を示しています。この仕様の一環として、ソフトウェアパッケージがビルド依存関係を指定するために使用する新しい構成ファイルが導入されます（将来的には同じ構成ファイルが他の構成詳細にも使用されることが期待されます）。
 
 
-Rationale
-=========
+根拠
+===============================================================================
 
-When Python first developed its tooling for building distributions of
-software for projects, distutils [#distutils]_ was the chosen
-solution. As time went on, setuptools [#setuptools]_ gained popularity
-to add some features on top of distutils. Both used the concept of a
-``setup.py`` file that project maintainers executed to build
-distributions of their software (as well as users to install said
-distribution).
+Python がプロジェクトのソフトウェアのディストリビューションをビルドするためのツールを最初に開発したとき、distutils [#distutils]_ が選ばれたソリューションでした。時間が経つにつれて、setuptools [#setuptools]_ は distutils の上にいくつかの機能を追加するために人気を集めました。どちらも、プロジェクトメンテナーがソフトウェアのディストリビューションをビルドするために実行する ``setup.py`` ファイルの概念を使用しました（およびユーザーがそのディストリビューションをインストールするために使用しました）。
 
-Using an executable file to specify build requirements under distutils
-isn't an issue as distutils is part of Python's standard library.
-Having the build tool as part of Python means that a ``setup.py`` has
-no external dependency that a project maintainer needs to worry about
-to build a distribution of their project. There was no need to specify
-any dependency information as the only dependency is Python.
+distutils の下でビルド要件を指定するために実行可能ファイルを使用することは問題ではありません。なぜなら、distutils は Python の標準ライブラリの一部だからです。ビルドツールが Python の一部であるため、``setup.py`` にはプロジェクトメンテナーがビルドするために心配する必要のある外部依存関係はありません。唯一の依存関係は Python であるため、依存関係情報を指定する必要はありませんでした。
 
-But when a project chooses to use setuptools, the use of an executable
-file like ``setup.py`` becomes an issue. You can't execute a
-``setup.py`` file without knowing its dependencies, but currently
-there is no standard way to know what those dependencies are in an
-automated fashion without executing the ``setup.py`` file where that
-information is stored. It's a catch-22 of a file not being runnable
-without knowing its own contents which can't be known programmatically
-unless you run the file.
+しかし、プロジェクトが setuptools を使用することを選択した場合、``setup.py`` のような実行可能ファイルの使用は問題になります。依存関係を知らずに ``setup.py`` ファイルを実行することはできませんが、現在のところ、その依存関係を自動化された方法で知る標準的な方法はありません。依存関係情報が保存されている ``setup.py`` ファイルを実行しない限り、その内容をプログラム的に知ることはできません。これは、ファイルの内容を知らずに実行できないというキャッチ-22 の問題です。
 
-Setuptools tried to solve this with a ``setup_requires`` argument to
-its ``setup()`` function [#setup_args]_. This solution has a number
-of issues, such as:
+Setuptools は、``setup()`` 関数に ``setup_requires`` 引数を追加することでこれを解決しようとしました [#setup_args]_。この解決策にはいくつかの問題があります。例えば：
 
-* No tooling (besides setuptools itself) can access this information
-  without executing the ``setup.py``, but ``setup.py`` can't be
-  executed without having these items installed.
-* While setuptools itself will install anything listed in this, they
-  won't be installed until *during* the execution of the ``setup()``
-  function, which means that the only way to actually use anything
-  added here is through increasingly complex machinations that delay
-  the import and usage of these modules until later on in the
-  execution of the ``setup()`` function.
-* This cannot include ``setuptools`` itself nor can it include a
-  replacement to ``setuptools``, which means that projects such as
-  ``numpy.distutils`` are largely incapable of utilizing it and
-  projects cannot take advantage of newer setuptools features until
-  their users naturally upgrade the version of setuptools to a newer
-  one.
-* The items listed in ``setup_requires`` get implicitly installed
-  whenever you execute the ``setup.py`` but one of the common ways
-  that the ``setup.py`` is executed is via another tool, such as
-  ``pip``, who is already managing dependencies. This means that
-  a command like ``pip install spam`` might end up having both
-  pip and setuptools downloading and installing packages and end
-  users needing to configure *both* tools (and for ``setuptools``
-  without being in control of the invocation) to change settings
-  like which repository it installs from. It also means that users
-  need to be aware of the discovery rules for both tools, as one
-  may support different package formats or determine the latest
-  version differently.
+* setuptools 自体を除くツールは、この情報にアクセスするために ``setup.py`` を実行する必要がありますが、``setup.py`` を実行するにはこれらの項目がインストールされている必要があります。
+* setuptools 自体はこれにリストされたものをインストールしますが、それらは ``setup()`` 関数の実行中にインストールされるため、ここに追加されたものを実際に使用する唯一の方法は、``setup()`` 関数の実行中にこれらのモジュールのインポートと使用を遅らせる複雑な操作を通じて行うことです。
+* これには ``setuptools`` 自体や ``setuptools`` の代替品を含めることはできません。これにより、``numpy.distutils`` などのプロジェクトはこれを利用することがほとんどできず、プロジェクトはユーザーが自然に setuptools のバージョンを新しいものにアップグレードするまで、新しい setuptools 機能を利用することができません。
+* ``setup_requires`` にリストされた項目は、``setup.py`` を実行するたびに暗黙的にインストールされますが、``setup.py`` が実行される一般的な方法の1つは、``pip`` などの他のツールを介して行われます。これにより、``pip install spam`` のようなコマンドが、pip と setuptools の両方がパッケージをダウンロードしてインストールすることになり、エンドユーザーが両方のツールを設定する必要が生じます（``setuptools`` の場合は呼び出しを制御せずに）。これにより、ユーザーは両方のツールの発見ルールを認識する必要があります。1つのツールは異なるパッケージ形式をサポートしているか、最新バージョンを異なる方法で決定する場合があります。
 
-This has culminated in a situation where use of ``setup_requires``
-is rare, where projects tend to either simply copy and paste snippets
-between ``setup.py`` files or they eschew it all together in favor
-of simply documenting elsewhere what they expect the user to have
-manually installed prior to attempting to build or install their
-project.
+これにより、``setup_requires`` の使用はまれであり、プロジェクトは ``setup.py`` ファイル間でスニペットをコピーして貼り付けるか、ビルドまたはインストールを試みる前にユーザーが手動でインストールすることを期待するものを他の場所に文書化することを選択する傾向があります。
 
-All of this has led pip [#pip]_ to simply assume that setuptools is
-necessary when executing a ``setup.py`` file. The problem with this,
-though, is it doesn't scale if another project began to gain traction
-in the community as setuptools has. It also prevents other projects
-from gaining traction due to the friction required to use it with a
-project when pip can't infer the fact that something other than
-setuptools is required.
+これにより、pip [#pip]_ は ``setup.py`` ファイルを実行する際に setuptools が必要であると単純に仮定するようになりました。しかし、これには問題があります。コミュニティで setuptools と同じように人気を集める別のプロジェクトが登場した場合、スケールしません。また、pip が setuptools 以外のものが必要であることを推測できないため、他のプロジェクトが普及するのを妨げます。
 
-This PEP attempts to rectify the situation by specifying a way to list
-the minimal dependencies of the build system of a project in a
-declarative fashion in a specific file. This allows a project to list
-what build dependencies it has to go from e.g. source checkout to
-wheel, while not falling into the catch-22 trap that a ``setup.py``
-has where tooling can't infer what a project needs to build itself.
-Implementing this PEP will allow projects to specify what build system
-they depend on upfront so that tools like pip can make sure that they
-are installed in order to run the build system to build the project.
+この PEP は、プロジェクトのビルドシステムの最小依存関係を特定のファイルに宣言的にリストする方法を指定することで、この状況を修正しようとしています。これにより、プロジェクトがソースチェックアウトからホイールに移行するために必要なビルド依存関係をリストすることができ、``setup.py`` が持つツールがプロジェクトが自分自身をビルドするために何が必要かを推測できないというキャッチ-22 の罠に陥ることはありません。この PEP を実装することで、プロジェクトが依存するビルドシステムを事前に指定できるようになり、pip などのツールがそれらをインストールしてビルドシステムを実行し、プロジェクトをビルドできるようになります。
 
-To provide more context and motivation for this PEP, think of the
-(rough) steps required to produce a built artifact for a project:
+この PEP の背景と動機を提供するために、プロジェクトのビルドアーティファクトを生成するために必要な（大まかな）手順を考えてみてください。
 
-1. The source checkout of the project.
-2. Installation of the build system.
-3. Execute the build system.
+1. プロジェクトのソースチェックアウト。
+2. ビルドシステムのインストール。
+3. ビルドシステムの実行。
 
-This PEP covers step #2. :pep:`517` covers step #3, including how to have
-the build system dynamically specify more dependencies that the build
-system requires to perform its job. The purpose of this PEP though, is
-to specify the minimal set of requirements for the build system to
-simply begin execution.
+この PEP はステップ2をカバーしています。:pep:`517` はステップ3をカバーしており、ビルドシステムがその役割を果たすために必要な依存関係を動的に指定する方法を含んでいます。しかし、この PEP の目的は、ビルドシステムが単に実行を開始するための最小要件を指定することです。
 
 
-Specification
-=============
+仕様
+===============================================================================
 
-File Format
------------
+ファイル形式
+-------------------------------------------------------------------------------
 
-The build system dependencies will be stored in a file named
-``pyproject.toml`` that is written in the TOML format [#toml]_.
+ビルドシステムの依存関係は、TOML 形式 [#toml]_ で記述された ``pyproject.toml`` という名前のファイルに保存されます。
 
-This format was chosen as it is human-usable (unlike JSON [#json]_),
-it is flexible enough (unlike configparser [#configparser]_), stems
-from a standard (also unlike configparser [#configparser]_), and it
-is not overly complex (unlike YAML [#yaml]_). The TOML format is
-already in use by the Rust community as part of their
-Cargo package manager [#cargo]_ and in private email stated they have
-been quite happy with their choice of TOML. A more thorough
-discussion as to why various alternatives were not chosen can be read
-in the `Other file formats`_ section. The authors do realize, though,
-that choice of configuration file format is ultimately subjective and
-a choice had to be made and the authors prefer TOML for this situation.
+この形式は、人間が使用しやすい（JSON [#json]_ とは異なり）、柔軟性がある（configparser [#configparser]_ とは異なり）、標準に基づいている（configparser [#configparser]_ とは異なり）、複雑すぎない（YAML [#yaml]_ とは異なり）ために選ばれました。TOML 形式は、Rust コミュニティによって Cargo パッケージマネージャー [#cargo]_ の一部としてすでに使用されており、彼らは TOML の選択に非常に満足していると述べています。さまざまな代替案が選ばれなかった理由についての詳細な議論は、`他のファイル形式`_ セクションで読むことができます。著者は、構成ファイル形式の選択は最終的には主観的であり、選択を行う必要があることを認識していますが、この状況では TOML を好みます。
 
-Below we list the tables that tools are expected to recognize/respect.
-Tables not specified in this PEP are reserved for future use by other
-PEPs.
+以下に、ツールが認識/尊重することが期待されるテーブルをリストします。この PEP で指定されていないテーブルは、他の PEP による将来の使用のために予約されています。
 
-build-system table
-------------------
+build-system テーブル
+-------------------------------------------------------------------------------
 
-The ``[build-system]`` table is used to store build-related data.
-Initially only one key of the table will be valid and is mandatory
-for the table: ``requires``. This key must have a value of a list
-of strings representing :pep:`508` dependencies required to execute the
-build system (currently that means what dependencies are required to
-execute a ``setup.py`` file).
+``[build-system]`` テーブルは、ビルドに関連するデータを保存するために使用されます。最初は、このテーブルの1つのキーのみが有効であり、必須です：``requires``。このキーは、ビルドシステムを実行するために必要な :pep:`508` 依存関係を表す文字列のリストの値を持つ必要があります（現在は ``setup.py`` ファイルを実行するために必要な依存関係を意味します）。
 
-For the vast majority of Python projects that rely upon setuptools,
-the ``pyproject.toml`` file will be::
+setuptools に依存する大多数の Python プロジェクトでは、``pyproject.toml`` ファイルは次のようになります::
 
   [build-system]
-  # Minimum requirements for the build system to execute.
-  requires = ["setuptools", "wheel"]  # PEP 508 specifications.
+  # ビルドシステムを実行するための最小要件。
+  requires = ["setuptools", "wheel"]  # PEP 508 仕様。
 
-Because the use of setuptools and wheel are so expansive in the
-community at the moment, build tools are expected to use the example
-configuration file above as their default semantics when a
-``pyproject.toml`` file is not present.
+現在コミュニティで setuptools と wheel の使用が非常に広範であるため、ビルドツールは上記の例の構成ファイルを ``pyproject.toml`` ファイルが存在しない場合のデフォルトのセマンティクスとして使用することが期待されます。
 
-Tools should not require the existence of the ``[build-system]`` table.
-A ``pyproject.toml`` file may be used to store configuration details
-other than build-related data and thus lack a ``[build-system]`` table
-legitimately. If the file exists but is lacking the ``[build-system]``
-table then the default values as specified above should be used.
-If the table is specified but is missing required fields then the tool
-should consider it an error.
+ツールは ``[build-system]`` テーブルの存在を要求してはなりません。``pyproject.toml`` ファイルは、ビルドに関連するデータ以外の構成詳細を保存するために使用される場合があり、正当な理由で ``[build-system]`` テーブルが欠けていることがあります。ファイルが存在するが ``[build-system]`` テーブルが欠けている場合は、上記で指定されたデフォルト値を使用する必要があります。テーブルが指定されているが、必須フィールドが欠けている場合は、ツールはそれをエラーと見なすべきです。
 
 
-tool table
-----------
+tool テーブル
+-------------------------------------------------------------------------------
 
-The ``[tool]`` table is where any tool related to your Python
-project, not just build tools, can have users specify configuration
-data as long as they use a sub-table within ``[tool]``, e.g. the
-`flit <https://pypi.python.org/pypi/flit>`_ tool would store its
-configuration in ``[tool.flit]``.
+``[tool]`` テーブルは、ビルドツールに限らず、Python プロジェクトに関連する任意のツールが、``[tool]`` 内のサブテーブルを使用してユーザーが構成データを指定できる場所です。例えば、`flit <https://pypi.python.org/pypi/flit>`_ ツールは、``[tool.flit]`` に構成を保存します。
 
-We need some mechanism to allocate names within the ``tool.*``
-namespace, to make sure that different projects don't attempt to use
-the same sub-table and collide. Our rule is that a project can use
-the subtable ``tool.$NAME`` if, and only if, they own the entry for
-``$NAME`` in the Cheeseshop/PyPI.
+``tool.*`` 名前空間内の名前を割り当てるためのメカニズムが必要です。異なるプロジェクトが同じサブテーブルを使用しようとして衝突するのを防ぐためです。私たちのルールは、プロジェクトが Cheeseshop/PyPI に ``$NAME`` のエントリを所有している場合にのみ、``tool.$NAME`` サブテーブルを使用できるというものです。
 
-JSON Schema
------------
+JSON スキーマ
+-------------------------------------------------------------------------------
 
-To provide a type-specific representation of the resulting data from
-the TOML file for illustrative purposes only, the following JSON
-Schema [#jsonschema]_ would match the data format::
+TOML ファイルからの結果データの型固有の表現を提供するために、以下の JSON スキーマ [#jsonschema]_ がデータ形式に一致します::
 
   {
       "$schema": "http://json-schema.org/schema#",
@@ -232,104 +122,67 @@ Schema [#jsonschema]_ would match the data format::
   }
 
 
-Rejected Ideas
-==============
+却下されたアイデア
+===============================================================================
 
-A semantic version key
-----------------------
+セマンティックバージョンキー
+-------------------------------------------------------------------------------
 
-For future-proofing the structure of the configuration file, a
-``semantics-version`` key was initially proposed. Defaulting to ``1``,
-the idea was that if any semantics changes to previously defined keys
-or tables occurred which were not backwards-compatible, then the
-``semantics-version`` would be incremented to a new number.
+構成ファイルの構造を将来にわたって保護するために、``semantics-version`` キーが最初に提案されました。デフォルトは ``1`` で、以前に定義されたキーやテーブルのセマンティクスが後方互換性のない変更を受けた場合に、``semantics-version`` が新しい番号にインクリメントされるというアイデアです。
 
-In the end, though, it was decided that this was a premature
-optimization. The expectation is that changes to what is pre-defined
-semantically in the configuration file will be rather conservative.
-And in the instances where a backwards-incompatible change would have
-occurred, different names can be used for the new semantics to avoid
-breaking older tools.
+しかし、最終的には、これは時期尚早の最適化であると判断されました。構成ファイルで事前に定義されたセマンティクスの変更は、かなり保守的であると予想されます。そして、後方互換性のない変更が発生する場合には、新しいセマンティクスのために異なる名前を使用して、古いツールを壊さないようにすることができます。
 
 
-A more nested namespace
------------------------
+よりネストされた名前空間
+-------------------------------------------------------------------------------
 
-An earlier draft of this PEP had a top-level ``[package]`` table. The
-idea was to impose some scoping for a semantics versioning scheme
-(see `A semantic version key`_ for why that idea was rejected).
-With the need for scoping removed, the point of having a top-level
-table became superfluous.
+この PEP の初期のドラフトには、トップレベルの ``[package]`` テーブルがありました。これは、セマンティックバージョニングスキームのスコープを設定するためのアイデアでした（なぜそのアイデアが却下されたかについては、`セマンティックバージョンキー`_ を参照してください）。スコープの必要性がなくなったため、トップレベルのテーブルを持つことの意味がなくなりました。
 
 
-Other table names
------------------
+他のテーブル名
+-------------------------------------------------------------------------------
 
-Another name proposed for the ``[build-system]`` table was
-``[build]``. The alternative name is shorter, but doesn't convey as
-much of the intention of what information is stored in the table. After
-a vote on the distutils-sig mailing list, the current name won out.
+``[build-system]`` テーブルの別の名前として ``[build]`` が提案されました。代替名は短いですが、テーブルに保存される情報の意図をあまり伝えません。distutils-sig メーリングリストでの投票の結果、現在の名前が選ばれました。
 
 
-Other file formats
-------------------
+他のファイル形式
+-------------------------------------------------------------------------------
 
-Several other file formats were put forward for consideration, all
-rejected for various reasons. Key requirements were that the format
-be editable by human beings and have an implementation that can be
-vendored easily by projects. This outright excluded certain formats
-like XML which are not friendly towards human beings and were never
-seriously discussed.
+いくつかの他のファイル形式が検討されましたが、さまざまな理由で却下されました。主な要件は、形式が人間によって編集可能であり、プロジェクトによって簡単にベンダリングできる実装があることです。これにより、XML のような形式は人間にとって使いやすくないため、真剣に議論されることはありませんでした。
 
-Overview of file formats considered
-'''''''''''''''''''''''''''''''''''
+検討されたファイル形式の概要
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-The key reasons for rejecting the other alternatives considered are
-summarised in the following sections, while the full review (including
-positive arguments in favour of TOML) can be found at [#file_formats]_.
+他の代替案が却下された主な理由は、以下のセクションに要約されています。完全なレビュー（TOML を支持する肯定的な議論を含む）は [#file_formats]_ で見つけることができます。
 
-TOML was ultimately selected as it provided all the features we
-were interested in, while avoiding the downsides introduced by
-the alternatives.
+最終的に TOML が選ばれたのは、私たちが興味を持っていたすべての機能を提供し、代替案によって導入される欠点を回避できたためです。
 
-======================= ==== ==== ==== =======
-Feature                 TOML YAML JSON CFG/INI
-======================= ==== ==== ==== =======
-Well-defined            yes  yes  yes
-Real data types         yes  yes  yes
-Reliable Unicode        yes  yes  yes
-Reliable comments       yes  yes
-Easy for humans to edit yes  ??        ??
-Easy for tools to edit  yes  ??   yes  ??
-In standard library               yes  yes
-Easy for pip to vendor  yes       n/a  n/a
-======================= ==== ==== ==== =======
+============================ ==== ==== ==== =======
+機能                         TOML YAML JSON CFG/INI
+============================ ==== ==== ==== =======
+明確に定義されている         yes  yes  yes         
+実際のデータ型               yes  yes  yes         
+信頼性のある Unicode         yes  yes  yes         
+信頼性のあるコメント         yes  yes              
+人間が編集しやすい           yes  ??        ??     
+ツールが編集しやすい         yes  ??   yes  ??     
+標準ライブラリに含まれている           yes  yes    
+pip がベンダリングしやすい   yes       n/a  n/a    
+============================ ==== ==== ==== =======
 
-("??" in the table indicates items where most folks would be
-inclined to answer "yes", but there turn out to be a lot of
-quirks and edge cases that arise in practice due to either
-the lack of a clear specification, or else the underlying
-file format specification being surprisingly complicated)
+（表の「??」は、多くの人が「yes」と答える傾向がある項目ですが、明確な仕様がないため、または基礎となるファイル形式の仕様が驚くほど複雑であるため、実際には多くの癖やエッジケースが発生することを示しています）
 
-The ``pytoml`` TOML parser is ~300 lines of pure Python code,
-so being outside the standard library didn't count heavily
-against it.
+``pytoml`` TOML パーサーは約300行の純粋な Python コードであるため、標準ライブラリの外にあることは大きな問題ではありませんでした。
 
-Python literals were also discussed as a potential format, but
-weren't considered in the file format review (since they're not
-a common pre-existing file format).
+Python リテラルも潜在的な形式として議論されましたが、一般的な既存のファイル形式ではないため、ファイル形式のレビューには含まれていませんでした。
 
 
 JSON
-''''
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-The JSON format [#json]_ was initially considered but quickly
-rejected. While great as a human-readable, string-based data exchange
-format, the syntax does not lend itself to easy editing by a human
-being (e.g. the syntax is more verbose than necessary while not
-allowing for comments).
+JSON 形式 [#json]_ は最初に検討されましたが、すぐに却下されました。文字列ベースのデータ交換形式としては優れていますが、構文が人間による編集に適していません（例：構文が必要以上に冗長であり、コメントを許可しません）。
 
-An example JSON file for the proposed data would be::
+提案されたデータの JSON ファイルの例は次のとおりです::
 
     {
         "build": {
@@ -342,42 +195,17 @@ An example JSON file for the proposed data would be::
 
 
 YAML
-''''
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-The YAML format [#yaml]_ was designed to be a superset of JSON
-[#json]_ while being easier to work with by hand. There are three main
-issues with YAML.
+YAML 形式 [#yaml]_ は、手作業で扱いやすくするために JSON [#json]_ のスーパーセットとして設計されました。YAML には3つの主な問題があります。
 
-One is that the specification is large: 86 pages if printed on
-letter-sized paper. That leaves the possibility that someone may use a
-feature of YAML that works with one parser but not another. It has
-been suggested to standardize on a subset, but that basically means
-creating a new standard specific to this file which is not tractable
-long-term.
+1つは、仕様が大きいことです。レターサイズの紙に印刷すると86ページになります。これにより、あるパーサーで動作する YAML の機能が他のパーサーでは動作しない可能性があります。サブセットを標準化することが提案されましたが、これはこのファイルに特化した新しい標準を作成することを意味し、長期的には実行可能ではありません。
 
-Two is that YAML itself is not safe by default. The specification
-allows for the arbitrary execution of code which is best avoided when
-dealing with configuration data.  It is of course possible to avoid
-this behavior -- for example, PyYAML provides a ``safe_load`` operation
--- but if any tool carelessly uses ``load`` instead then they open
-themselves up to arbitrary code execution. While this PEP is focused on
-the building of projects which inherently involves code execution,
-other configuration data such as project name and version number may
-end up in the same file someday where arbitrary code execution is not
-desired.
+2つ目は、YAML 自体がデフォルトで安全ではないことです。仕様では、任意のコードの実行を許可しており、構成データを扱う際には避けるべきです。もちろん、この動作を回避することは可能です。たとえば、PyYAML は ``safe_load`` 操作を提供していますが、ツールが不注意に ``load`` を使用すると、任意のコード実行のリスクがあります。この PEP はプロジェクトのビルドに焦点を当てており、ビルドにはコードの実行が含まれますが、プロジェクト名やバージョン番号などの他の構成データが将来的に同じファイルに含まれる可能性があり、その場合には任意のコード実行は望ましくありません。
 
-And finally, the most popular Python implementation of YAML is
-PyYAML [#pyyaml]_ which is a large project of a few thousand lines of
-code and an optional C extension module. While in and of itself this
-isn't necessarily an issue, this becomes more of a problem for
-projects like pip where they would most likely need to vendor PyYAML
-as a dependency so as to be fully self-contained (otherwise you end
-up with your install tool needing an install tool to work). A
-proof-of-concept re-working of PyYAML has been done to see how easy
-it would be to potentially vendor a simpler version of the library
-which shows it is a possibility.
+最後に、YAML の最も人気のある Python 実装は PyYAML [#pyyaml]_ であり、数千行のコードとオプションの C 拡張モジュールを持つ大規模なプロジェクトです。これ自体は必ずしも問題ではありませんが、pip のようなプロジェクトにとっては、依存関係として PyYAML をベンダリングする必要があるため、完全に自己完結型になる必要があります（そうしないと、インストールツールが動作するためにインストールツールが必要になります）。ライブラリの簡素化バージョンをベンダリングする可能性を示すために、PyYAML の概念実証の再作業が行われました。
 
-An example YAML file is::
+YAML ファイルの例は次のとおりです::
 
     build:
         requires:
@@ -386,22 +214,11 @@ An example YAML file is::
 
 
 configparser
-''''''''''''
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-An INI-style configuration file based on what
-configparser [#configparser]_ accepts was considered. Unfortunately
-there is no specification of what configparser accepts, leading to
-support skew between versions. For instance, what ConfigParser in
-Python 2.7 accepts is not the same as what configparser in Python 3
-accepts. While one could standardize on what Python 3 accepts and
-simply vendor the backport of the configparser module, that does mean
-this PEP would have to codify that the backport of configparser must
-be used by all project wishes to consume the metadata specified by
-this PEP. This is overly restrictive and could lead to confusion if
-someone is not aware of that a specific version of configparser is
-expected.
+configparser [#configparser]_ が受け入れる INI スタイルの構成ファイルが検討されました。残念ながら、configparser が受け入れるものの仕様はなく、バージョン間でサポートの偏りがあります。たとえば、Python 2.7 の ConfigParser が受け入れるものは、Python 3 の configparser が受け入れるものとは異なります。Python 3 が受け入れるものを標準化し、configparser モジュールのバックポートをベンダリングすることはできますが、これにより、この PEP で指定されたメタデータを消費するすべてのプロジェクトが特定のバージョンの configparser を使用する必要があることを明示的に規定する必要があります。これは過度に制限的であり、特定のバージョンの configparser が期待されることを認識していない場合に混乱を招く可能性があります。
 
-An example INI file is::
+INI ファイルの例は次のとおりです::
 
     [build]
     requires =
@@ -409,100 +226,76 @@ An example INI file is::
         wheel>=0.27
 
 
-Python literals
-'''''''''''''''
+Python リテラル
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-Someone proposed using Python literals as the configuration format.
-The file would contain one dict at the top level, with the data all
-inside that dict, with sections defined by the keys. All Python
-programmers would be used to the format, there would implicitly be no
-third-party dependency to read the configuration data, and it can be
-safe if parsed by ``ast.literal_eval()`` [#ast_literal_eval]_.
-Python literals can be identical to JSON, with the added benefit of
-supporting trailing commas and comments. In addition, Python's richer
-data model may be useful for some future configuration needs (e.g. non-string
-dict keys, floating point vs. integer values).
+Python リテラルを構成形式として使用することが提案されました。ファイルにはトップレベルに1つの辞書が含まれ、その辞書内にすべてのデータが含まれ、セクションはキーによって定義されます。すべての Python プログラマーは形式に慣れており、構成データを読み取るためにサードパーティの依存関係が必要なく、``ast.literal_eval()`` [#ast_literal_eval]_ で解析することで安全にすることができます。Python リテラルは JSON と同一であり、末尾のカンマやコメントをサポートする追加の利点があります。さらに、Python のより豊富なデータモデルは、将来の構成ニーズに役立つかもしれません（例：非文字列の辞書キー、浮動小数点数と整数の値の区別）。
 
-On the other hand, python literals are a Python-specific format, and
-it is anticipated that these data may need to be read by packaging
-tools, etc. that are not written in Python.
+一方で、Python リテラルは Python 固有の形式であり、これらのデータは Python で書かれていないパッケージングツールなどによって読み取られる必要があると予想されます。
 
-An example Python literal file for the proposed data would be::
+提案されたデータの Python リテラルファイルの例は次のとおりです::
 
-    # The build configuration
+    # ビルド構成
     {"build": {"requires": ["setuptools",
-                            "wheel>=0.27", # note the trailing comma
-                            # "numpy>=1.10" # a commented out data line
+                            "wheel>=0.27", # 末尾のカンマに注意
+                            # "numpy>=1.10" # コメントアウトされたデータ行
                             ]
-    # and here is an arbitrary comment.
+    # ここに任意のコメントがあります。
                }
      }
 
 
-Sticking with ``setup.cfg``
----------------------------
+``setup.cfg`` を使用し続ける
+-------------------------------------------------------------------------------
 
-There are two issues with ``setup.cfg`` used by setuptools as a general
-format. One is that they are ``.ini`` files which have issues as mentioned
-in the configparser_ discussion above. The other is that the schema for
-that file has never been rigorously defined and thus it's unknown which
-format would be safe to use going forward without potentially confusing
-setuptools installations.
+setuptools によって一般的な形式として使用される ``setup.cfg`` には2つの問題があります。1つは、configparser_ の議論で述べたように、``.ini`` ファイルであることです。もう1つは、そのファイルのスキーマが厳密に定義されたことがなく、将来的にどの形式が安全に使用できるかが不明であり、setuptools のインストールを混乱させる可能性があることです。
 
 
 
-Other file names
-----------------
+他のファイル名
+-------------------------------------------------------------------------------
 
-Several other file names were considered and rejected (although this
-is very much a bikeshedding topic, and so the decision comes down to
-mostly taste).
+いくつかの他のファイル名が検討され、却下されました（これは非常にバイクシェディングなトピックであり、決定は主に好みによるものです）。
 
 pysettings.toml
-  Most reasonable alternative.
+  最も合理的な代替案。
 
 pypa.toml
-  While it makes sense to reference the PyPA [#pypa]_, it is a
-  somewhat niche term. It's better to have the file name make sense
-  without having domain-specific knowledge.
+  PyPA [#pypa]_ を参照するのは理にかなっていますが、ややニッチな用語です。ドメイン固有の知識がなくてもファイル名が意味を持つ方が良いです。
 
 pybuild.toml
-  From the restrictive perspective of this PEP this filename makes
-  sense, but if any non-build metadata ever gets added to the file
-  then the name ceases to make sense.
+  この PEP の制限的な視点からはこのファイル名は理にかなっていますが、将来的にビルド以外のメタデータがファイルに追加されると、名前が意味をなさなくなります。
 
 pip.toml
-  Too tool-specific.
+  ツール固有すぎます。
 
 meta.toml
-  Too generic; project may want to have its own metadata file.
+  あまりにも一般的です。プロジェクトは独自のメタデータファイルを持ちたいかもしれません。
 
 setup.toml
-  While keeping with traditional thanks to ``setup.py``, it does not
-  necessarily match what the file may contain in the future (e.g. is
-  knowing the name of a project inherently part of its setup?).
+  ``setup.py`` に感謝しつつも、将来的にファイルに含まれる可能性のある内容と一致しないかもしれません（例：プロジェクトの名前を知ることは本質的にそのセットアップの一部ですか？）。
 
 pymeta.toml
-  Not obvious to newcomers to programming and/or Python.
+  プログラミングや Python に不慣れな人には明らかではありません。
 
 pypackage.toml & pypackaging.toml
-  Name conflation of what a "package" is (project versus namespace).
+  「パッケージ」という名前の混同（プロジェクトと名前空間の違い）。
 
 pydevelop.toml
-  The file may contain details not specific to development.
+  ファイルには開発に特化しない詳細が含まれる可能性があります。
 
 pysource.toml
-  Not directly related to source code.
+  ソースコードに直接関連していません。
 
 pytools.toml
-  Misleading as the file is (currently) aimed at project management.
+  ファイルは（現在）プロジェクト管理を目的としているため、誤解を招きます。
 
 dstufft.toml
-  Too person-specific. ;)
+  個人固有すぎます。 ;)
 
 
-References
-==========
+参考文献
+===============================================================================
 
 .. [#distutils] distutils
    (https://docs.python.org/3/library/distutils.html#module-distutils)
@@ -510,7 +303,7 @@ References
 .. [#setuptools] setuptools
    (https://pypi.python.org/pypi/setuptools)
 
-.. [#setup_args] setuptools: New and Changed setup() Keywords
+.. [#setup_args] setuptools: 新しいおよび変更された setup() キーワード
    (http://pythonhosted.org/setuptools/setuptools.html#new-and-changed-setup-keywords)
 
 .. [#pip] pip
@@ -543,17 +336,17 @@ References
 .. [#ast_literal_eval] ``ast.literal_eval()``
    (https://docs.python.org/3/library/ast.html#ast.literal_eval)
 
-.. [#cargo] Cargo, Rust's package manager
+.. [#cargo] Cargo, Rust のパッケージマネージャー
    (http://doc.crates.io/)
 
-.. [#jsonschema] JSON Schema
+.. [#jsonschema] JSON スキーマ
    (http://json-schema.org/)
 
-.. [#file_formats] Nathaniel J. Smith's file format review
+.. [#file_formats] Nathaniel J. Smith のファイル形式レビュー
    (https://gist.github.com/njsmith/78f68204c5d969f8c8bc645ef77d4a8f)
 
 
-Copyright
-=========
+著作権
+===============================================================================
 
-This document has been placed in the public domain.
+このドキュメントはパブリックドメインに置かれています。
